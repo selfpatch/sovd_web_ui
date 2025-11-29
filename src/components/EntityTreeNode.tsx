@@ -1,0 +1,124 @@
+import { useEffect } from 'react';
+import { useShallow } from 'zustand/shallow';
+import { ChevronRight, Loader2, Server, Folder, FileJson, Box } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { useAppStore } from '@/lib/store';
+import type { EntityTreeNode as EntityTreeNodeType } from '@/lib/types';
+
+interface EntityTreeNodeProps {
+    node: EntityTreeNodeType;
+    depth: number;
+}
+
+/**
+ * Get icon for entity type
+ */
+function getEntityIcon(type: string) {
+    switch (type.toLowerCase()) {
+        case 'device':
+        case 'server':
+            return Server;
+        case 'component':
+        case 'ecu':
+            return Box;
+        case 'folder':
+        case 'area':
+            return Folder;
+        default:
+            return FileJson;
+    }
+}
+
+export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
+    const {
+        expandedPaths,
+        loadingPaths,
+        selectedPath,
+        toggleExpanded,
+        loadChildren,
+        selectEntity,
+    } = useAppStore(
+        useShallow((state) => ({
+            expandedPaths: state.expandedPaths,
+            loadingPaths: state.loadingPaths,
+            selectedPath: state.selectedPath,
+            toggleExpanded: state.toggleExpanded,
+            loadChildren: state.loadChildren,
+            selectEntity: state.selectEntity,
+        }))
+    );
+
+    const isExpanded = expandedPaths.includes(node.path);
+    const isLoading = loadingPaths.includes(node.path);
+    const isSelected = selectedPath === node.path;
+    const hasChildren = node.hasChildren !== false; // Default to true if not specified
+    const Icon = getEntityIcon(node.type);
+
+    // Load children when expanded and no children loaded yet
+    useEffect(() => {
+        if (isExpanded && !node.children && !isLoading && hasChildren) {
+            loadChildren(node.path);
+        }
+    }, [isExpanded, node, isLoading, hasChildren, loadChildren]);
+
+    const handleToggle = () => {
+        if (hasChildren) {
+            toggleExpanded(node.path);
+        }
+    };
+
+    const handleSelect = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        selectEntity(node.path);
+    };
+
+    return (
+        <Collapsible open={isExpanded} onOpenChange={handleToggle}>
+            <div
+                className={cn(
+                    'flex items-center gap-1 py-1.5 px-2 rounded-md cursor-pointer hover:bg-accent transition-colors',
+                    isSelected && 'bg-accent',
+                )}
+                style={{ paddingLeft: `${depth * 16 + 8}px` }}
+                onClick={handleSelect}
+            >
+                <CollapsibleTrigger asChild onClick={(e) => e.stopPropagation()}>
+                    <button
+                        className={cn(
+                            'p-0.5 rounded hover:bg-accent-foreground/10 transition-transform',
+                            !hasChildren && 'invisible',
+                        )}
+                    >
+                        {isLoading ? (
+                            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                        ) : (
+                            <ChevronRight
+                                className={cn(
+                                    'w-4 h-4 text-muted-foreground transition-transform',
+                                    isExpanded && 'rotate-90',
+                                )}
+                            />
+                        )}
+                    </button>
+                </CollapsibleTrigger>
+
+                <Icon className="w-4 h-4 text-muted-foreground shrink-0" />
+
+                <span className="text-sm truncate">{node.name}</span>
+
+                <span className="text-xs text-muted-foreground ml-auto shrink-0">
+                    {node.type}
+                </span>
+            </div>
+
+            {hasChildren && (
+                <CollapsibleContent>
+                    {node.children?.map((child) => (
+                        <EntityTreeNode key={child.path} node={child} depth={depth + 1} />
+                    ))}
+                </CollapsibleContent>
+            )}
+        </Collapsible>
+    );
+}
