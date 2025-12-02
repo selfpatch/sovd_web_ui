@@ -158,7 +158,6 @@ export const useAppStore = create<AppState>()(
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Unknown error';
           toast.error(`Failed to load entities: ${message}`);
-          console.error('Failed to load root entities:', error);
         }
       },
 
@@ -189,7 +188,6 @@ export const useAppStore = create<AppState>()(
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Unknown error';
           toast.error(`Failed to load children for ${path}: ${message}`);
-          console.error(`Failed to load children for ${path}:`, error);
           set({ loadingPaths: get().loadingPaths.filter(p => p !== path) });
         }
       },
@@ -219,9 +217,22 @@ export const useAppStore = create<AppState>()(
         try {
           const details = await client.getEntityDetails(path);
           set({ selectedEntity: details, isLoadingDetails: false });
-        } catch (error) {
-          console.error(`Failed to load entity details for ${path}:`, error);
-          set({ isLoadingDetails: false });
+        } catch {
+          toast.error(`Failed to load entity details for ${path}`);
+
+          // Set fallback entity to allow panel to render
+          const id = path.split('/').pop() || path;
+          set({
+            selectedEntity: {
+              id,
+              name: id,
+              type: 'component',
+              href: path,
+              topics: [],
+              error: 'Failed to load details'
+            },
+            isLoadingDetails: false
+          });
         }
       },
 
