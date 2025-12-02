@@ -25,6 +25,10 @@ export function EntityTreeSidebar({ onSettingsClick }: EntityTreeSidebarProps) {
         }))
     );
 
+    const handleRefresh = () => {
+        loadRootEntities();
+    };
+
     return (
         <aside className="w-80 border-r bg-card flex flex-col h-full">
             {/* Header */}
@@ -40,7 +44,7 @@ export function EntityTreeSidebar({ onSettingsClick }: EntityTreeSidebarProps) {
                                 variant="ghost"
                                 size="icon"
                                 className="h-8 w-8"
-                                onClick={() => loadRootEntities()}
+                                onClick={handleRefresh}
                                 title="Refresh entities"
                             >
                                 <RefreshCw className="w-4 h-4" />
@@ -86,8 +90,6 @@ export function EntityTreeSidebar({ onSettingsClick }: EntityTreeSidebarProps) {
             <div className="flex-1 overflow-y-auto p-2">
                 {!isConnected ? (
                     <EmptyState type="no-connection" />
-                ) : rootEntities.length === 0 ? (
-                    <EmptyState type="no-entities" />
                 ) : (
                     <div className="space-y-0.5">
                         {rootEntities.map((entity) => (

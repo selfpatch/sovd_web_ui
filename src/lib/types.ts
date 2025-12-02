@@ -22,6 +22,8 @@ export interface SovdEntity {
  * Full entity details (response from GET /entities/{path})
  */
 export interface SovdEntityDetails extends SovdEntity {
+  /** Topics available for this component */
+  topics?: ComponentTopic[];
   /** Additional properties vary by entity type */
   [key: string]: unknown;
 }
@@ -52,3 +54,27 @@ export interface EntityTreeNode extends SovdEntity {
   isExpanded?: boolean;
   path: string;
 }
+
+/**
+ * Component topic data from GET /components/{id}/data
+ */
+export interface ComponentTopic {
+  /** Full topic path */
+  topic: string;
+  /** Timestamp in nanoseconds */
+  timestamp: number;
+  /** Topic message data */
+  data: unknown;
+}
+
+/**
+ * Request to publish to a component topic via PUT
+ */
+export interface ComponentTopicPublishRequest {
+  /** Message type (e.g., "geometry_msgs/msg/Twist") */
+  type: string;
+  /** Message data as JSON */
+  data: unknown;
+}
+
+

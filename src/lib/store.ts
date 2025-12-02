@@ -8,6 +8,7 @@ const STORAGE_KEY = 'sovd_web_ui_server_url';
 export interface AppState {
   // Connection state
   serverUrl: string | null;
+  baseEndpoint: string;
   isConnected: boolean;
   isConnecting: boolean;
   connectionError: string | null;
@@ -24,7 +25,7 @@ export interface AppState {
   isLoadingDetails: boolean;
 
   // Actions
-  connect: (url: string) => Promise<boolean>;
+  connect: (url: string, baseEndpoint?: string) => Promise<boolean>;
   disconnect: () => void;
   loadRootEntities: () => Promise<void>;
   loadChildren: (path: string) => Promise<void>;
@@ -74,6 +75,7 @@ export const useAppStore = create<AppState>()(
     (set, get) => ({
       // Initial state
       serverUrl: null,
+      baseEndpoint: '',
       isConnected: false,
       isConnecting: false,
       connectionError: null,
@@ -83,16 +85,17 @@ export const useAppStore = create<AppState>()(
       loadingPaths: [],
       expandedPaths: [],
 
+      // Selection state
       selectedPath: null,
       selectedEntity: null,
       isLoadingDetails: false,
 
       // Connect to SOVD server
-      connect: async (url: string) => {
+      connect: async (url: string, baseEndpoint: string = '') => {
         set({ isConnecting: true, connectionError: null });
 
         try {
-          const client = createSovdClient(url);
+          const client = createSovdClient(url, baseEndpoint);
           const isOk = await client.ping();
 
           if (!isOk) {
@@ -105,6 +108,7 @@ export const useAppStore = create<AppState>()(
 
           set({
             serverUrl: url,
+            baseEndpoint,
             isConnected: true,
             isConnecting: false,
             connectionError: null,
@@ -128,6 +132,7 @@ export const useAppStore = create<AppState>()(
       disconnect: () => {
         set({
           serverUrl: null,
+          baseEndpoint: '',
           isConnected: false,
           isConnecting: false,
           connectionError: null,
@@ -200,7 +205,11 @@ export const useAppStore = create<AppState>()(
         const { client, selectedPath } = get();
         if (!client || path === selectedPath) return;
 
-        set({ selectedPath: path, isLoadingDetails: true, selectedEntity: null });
+        set({
+          selectedPath: path,
+          isLoadingDetails: true,
+          selectedEntity: null,
+        });
 
         try {
           const details = await client.getEntityDetails(path);
@@ -213,12 +222,18 @@ export const useAppStore = create<AppState>()(
 
       // Clear selection
       clearSelection: () => {
-        set({ selectedPath: null, selectedEntity: null });
+        set({
+          selectedPath: null,
+          selectedEntity: null,
+        });
       },
     }),
     {
       name: STORAGE_KEY,
-      partialize: (state: AppState) => ({ serverUrl: state.serverUrl }),
+      partialize: (state: AppState) => ({
+        serverUrl: state.serverUrl,
+        baseEndpoint: state.baseEndpoint
+      }),
     }
   )
 );
