@@ -1,6 +1,5 @@
 import { useShallow } from 'zustand/shallow';
 import { Server, Settings, RefreshCw } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { EntityTreeNode } from '@/components/EntityTreeNode';
 import { EmptyState } from '@/components/EmptyState';
@@ -75,10 +74,7 @@ export function EntityTreeSidebar({ onSettingsClick }: EntityTreeSidebarProps) {
             {isConnected && serverUrl && (
                 <div className="px-4 py-2 border-b">
                     <div className="flex items-center gap-2">
-                        <div className={cn(
-                            'w-2 h-2 rounded-full',
-                            isConnected ? 'bg-green-500' : 'bg-red-500'
-                        )} />
+                        <div className="w-2 h-2 rounded-full bg-green-500" />
                         <span className="text-xs text-muted-foreground truncate">
                             {serverUrl}
                         </span>
