@@ -24,6 +24,8 @@ export interface SovdEntity {
 export interface SovdEntityDetails extends SovdEntity {
   /** Topics available for this component */
   topics?: ComponentTopic[];
+  /** Error message if fetching details failed */
+  error?: string;
   /** Additional properties vary by entity type */
   [key: string]: unknown;
 }
