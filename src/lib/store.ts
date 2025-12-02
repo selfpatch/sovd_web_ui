@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { toast } from 'react-toastify';
-import type { SovdEntity, SovdEntityDetails, EntityTreeNode } from './types';
+import type { SovdEntity, SovdEntityDetails, EntityTreeNode, ComponentTopic } from './types';
 import { createSovdClient, type SovdApiClient } from './sovd-api';
 
 const STORAGE_KEY = 'sovd_web_ui_server_url';
@@ -69,6 +69,22 @@ function updateNodeInTree(
     }
     return node;
   });
+}
+
+/**
+ * Find a node in the tree by path
+ */
+function findNode(nodes: EntityTreeNode[], path: string): EntityTreeNode | null {
+  for (const node of nodes) {
+    if (node.path === path) {
+      return node;
+    }
+    if (node.children) {
+      const found = findNode(node.children, path);
+      if (found) return found;
+    }
+  }
+  return null;
 }
 
 export const useAppStore = create<AppState>()(
@@ -163,8 +179,45 @@ export const useAppStore = create<AppState>()(
 
       // Load children for a specific node
       loadChildren: async (path: string) => {
-        const { client, loadingPaths, rootEntities } = get();
+        const { client, loadingPaths, rootEntities, selectedPath, selectedEntity, isLoadingDetails } = get();
         if (!client || loadingPaths.includes(path)) return;
+
+        // OPTIMIZATION: If this entity is currently selected and we're loading/have its details, use them
+        if (selectedPath === path) {
+          // If already loaded
+          if (selectedEntity && selectedEntity.topics) {
+            const children = selectedEntity.topics.map(t => ({
+              id: t.topic,
+              name: t.topic,
+              type: 'topic' as const,
+              href: `${path}/${t.topic}`,
+              hasChildren: false,
+              path: `${path}/${t.topic}`,
+              data: t
+            }));
+
+            const updatedTree = updateNodeInTree(rootEntities, path, node => ({
+              ...node,
+              children,
+              isLoading: false,
+            }));
+
+            set({ rootEntities: updatedTree });
+            return;
+          }
+
+          // If currently loading details, wait for it instead of making duplicate request
+          if (isLoadingDetails) {
+            return;
+          }
+        }
+
+        // Check if we already have this data in the tree
+        const node = findNode(rootEntities, path);
+        if (node && node.children && node.children.length > 0) {
+          // Already loaded
+          return;
+        }
 
         // Mark as loading
         set({ loadingPaths: [...loadingPaths, path] });
@@ -205,8 +258,51 @@ export const useAppStore = create<AppState>()(
 
       // Select an entity and load its details
       selectEntity: async (path: string) => {
-        const { client, selectedPath } = get();
+        const { client, selectedPath, rootEntities, expandedPaths } = get();
         if (!client || path === selectedPath) return;
+
+        // OPTIMIZATION: Check if tree already has this data
+        const node = findNode(rootEntities, path);
+
+        // Optimization for Topic
+        if (node && node.type === 'topic' && node.data) {
+          const topicData = node.data as ComponentTopic;
+          set({
+            selectedPath: path,
+            isLoadingDetails: false,
+            selectedEntity: {
+              id: node.id,
+              name: node.name,
+              href: node.href,
+              topics: [topicData],
+              ...topicData,
+              // IMPORTANT: Set type AFTER spreading topicData to ensure it's not overwritten by topicData.type
+              type: 'topic',
+            }
+          });
+          return;
+        }
+
+        // Optimization for Component
+        if (node && node.children && node.children.length > 0 && node.type === 'component') {
+          // We have topics in the tree!
+          const topics = node.children.map(child => child.data as ComponentTopic).filter(Boolean);
+
+          if (topics.length > 0) {
+            set({
+              selectedPath: path,
+              isLoadingDetails: false,
+              selectedEntity: {
+                id: node.id,
+                name: node.name,
+                type: node.type,
+                href: node.href,
+                topics: topics,
+              }
+            });
+            return;
+          }
+        }
 
         set({
           selectedPath: path,
@@ -216,6 +312,36 @@ export const useAppStore = create<AppState>()(
 
         try {
           const details = await client.getEntityDetails(path);
+
+          // SYNC: Update tree with fetched topics AND auto-expand the node
+          if (details.topics) {
+            const children = details.topics.map(t => ({
+              id: t.topic,
+              name: t.topic,
+              type: 'topic' as const,
+              href: `${path}/${t.topic}`,
+              hasChildren: false,
+              path: `${path}/${t.topic}`,
+              data: t
+            }));
+
+            const updatedTree = updateNodeInTree(rootEntities, path, n => ({
+              ...n,
+              children,
+              isLoading: false
+            }));
+
+            // Auto-expand the node if it has topics
+            const newExpandedPaths = expandedPaths.includes(path)
+              ? expandedPaths
+              : [...expandedPaths, path];
+
+            set({
+              rootEntities: updatedTree,
+              expandedPaths: newExpandedPaths
+            });
+          }
+
           set({ selectedEntity: details, isLoadingDetails: false });
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Unknown error';

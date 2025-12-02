@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useShallow } from 'zustand/shallow';
-import { ChevronRight, Loader2, Server, Folder, FileJson, Box } from 'lucide-react';
+import { ChevronRight, Loader2, Server, Folder, FileJson, Box, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useAppStore } from '@/lib/store';
@@ -25,6 +25,8 @@ function getEntityIcon(type: string) {
         case 'folder':
         case 'area':
             return Folder;
+        case 'topic':
+            return MessageSquare;
         default:
             return FileJson;
     }
