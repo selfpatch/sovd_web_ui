@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useShallow } from 'zustand/shallow';
-import { Copy, Loader2, Send, Radio, AlertCircle, CheckCircle2, ChevronDown, ChevronRight } from 'lucide-react';
+import { toast } from 'react-toastify';
+import { Copy, Loader2, Send, Radio, ChevronDown, ChevronRight } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -32,8 +33,6 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
     const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
     const [publishingTopics, setPublishingTopics] = useState<Set<string>>(new Set());
     const [topicInputs, setTopicInputs] = useState<Record<string, string>>({});
-    const [publishErrors, setPublishErrors] = useState<Record<string, string>>({});
-    const [publishSuccess, setPublishSuccess] = useState<Record<string, boolean>>({});
 
     const toggleTopicExpanded = (topicPath: string) => {
         setExpandedTopics(prev => {
@@ -51,17 +50,15 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
         if (!client || !selectedEntity) return;
 
         const inputData = topicInputs[topic.topic] || '';
-        if (!inputData.trim()) return;
+        if (!inputData.trim()) {
+            toast.error('Please enter message data');
+            return;
+        }
 
         setPublishingTopics(prev => new Set(prev).add(topic.topic));
-        setPublishErrors(prev => ({ ...prev, [topic.topic]: '' }));
-        setPublishSuccess(prev => ({ ...prev, [topic.topic]: false }));
 
         try {
             const data = JSON.parse(inputData);
-            // Infer message type from topic data structure or use a default
-            // For now, we'll need the user to provide it or we extract from component metadata
-            // Simplified: assume we can detect common types
             const messageType = inferMessageType(topic.data);
 
             await client.publishToComponentTopic(selectedEntity.id, topicName, {
@@ -69,13 +66,10 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
                 data,
             });
 
-            setPublishSuccess(prev => ({ ...prev, [topic.topic]: true }));
-            setTimeout(() => {
-                setPublishSuccess(prev => ({ ...prev, [topic.topic]: false }));
-            }, 3000);
+            toast.success(`Published to ${topic.topic}`);
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to publish';
-            setPublishErrors(prev => ({ ...prev, [topic.topic]: message }));
+            toast.error(`Publish failed: ${message}`);
         } finally {
             setPublishingTopics(prev => {
                 const next = new Set(prev);
@@ -163,8 +157,6 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
                             const topicName = topic.topic.split('/').pop() || topic.topic;
                             const isExpanded = expandedTopics.has(topic.topic);
                             const isPublishing = publishingTopics.has(topic.topic);
-                            const hasError = publishErrors[topic.topic];
-                            const isSuccess = publishSuccess[topic.topic];
                             const hasNoData = topic.data === null || topic.data === undefined;
 
                             return (
@@ -232,19 +224,6 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
                                                         placeholder="Enter JSON message data..."
                                                         className="font-mono text-xs min-h-[120px] mb-3"
                                                     />
-
-                                                    {hasError && (
-                                                        <div className="flex items-center gap-2 p-2 rounded-md bg-destructive/10 text-destructive text-xs mb-2">
-                                                            <AlertCircle className="w-3 h-3 shrink-0" />
-                                                            <span>{hasError}</span>
-                                                        </div>
-                                                    )}
-                                                    {isSuccess && (
-                                                        <div className="flex items-center gap-2 p-2 rounded-md bg-green-500/10 text-green-600 text-xs mb-2">
-                                                            <CheckCircle2 className="w-3 h-3 shrink-0" />
-                                                            <span>Published successfully!</span>
-                                                        </div>
-                                                    )}
 
                                                     <Button
                                                         onClick={() => handlePublishToTopic(topic, topicName)}
