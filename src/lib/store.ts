@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { toast } from 'react-toastify';
 import type { SovdEntity, SovdEntityDetails, EntityTreeNode } from './types';
 import { createSovdClient, type SovdApiClient } from './sovd-api';
 
@@ -155,6 +156,8 @@ export const useAppStore = create<AppState>()(
           const treeNodes = entities.map((e: SovdEntity) => toTreeNode(e));
           set({ rootEntities: treeNodes });
         } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          toast.error(`Failed to load entities: ${message}`);
           console.error('Failed to load root entities:', error);
         }
       },
@@ -184,6 +187,8 @@ export const useAppStore = create<AppState>()(
             loadingPaths: get().loadingPaths.filter(p => p !== path),
           });
         } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          toast.error(`Failed to load children for ${path}: ${message}`);
           console.error(`Failed to load children for ${path}:`, error);
           set({ loadingPaths: get().loadingPaths.filter(p => p !== path) });
         }

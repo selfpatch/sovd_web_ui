@@ -1,6 +1,29 @@
 import type { SovdEntity, SovdEntityDetails, ComponentTopic, ComponentTopicPublishRequest } from './types';
 
 /**
+ * Timeout wrapper for fetch requests
+ */
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 5000): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Request timeout - server did not respond in time');
+    }
+    throw error;
+  }
+}
+
+/**
  * Normalize URL to ensure it has a protocol
  * Accepts: "ip:port", "http://ip:port", "https://domain"
  */
@@ -46,12 +69,12 @@ export class SovdApiClient {
    */
   async ping(): Promise<boolean> {
     try {
-      const response = await fetch(this.getUrl('health'), {
+      const response = await fetchWithTimeout(this.getUrl('health'), {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
         },
-      });
+      }, 3000); // 3 second timeout for ping
       return response.ok;
     } catch {
       return false;
@@ -66,7 +89,7 @@ export class SovdApiClient {
     try {
       // Root level -> fetch areas
       if (!path || path === '/') {
-        const response = await fetch(this.getUrl('areas'), {
+        const response = await fetchWithTimeout(this.getUrl('areas'), {
           method: 'GET',
           headers: { 'Accept': 'application/json' },
         });
@@ -92,7 +115,7 @@ export class SovdApiClient {
         return [];
       }
 
-      const response = await fetch(this.getUrl(`areas/${areaId}/components`), {
+      const response = await fetchWithTimeout(this.getUrl(`areas/${areaId}/components`), {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
       });
@@ -125,7 +148,7 @@ export class SovdApiClient {
 
       if (parts.length === 2) {
         const componentId = parts[1];
-        const response = await fetch(this.getUrl(`components/${componentId}/data`), {
+        const response = await fetchWithTimeout(this.getUrl(`components/${componentId}/data`), {
           method: 'GET',
           headers: { 'Accept': 'application/json' },
         });
@@ -178,14 +201,14 @@ export class SovdApiClient {
     request: ComponentTopicPublishRequest
   ): Promise<void> {
     try {
-      const response = await fetch(this.getUrl(`components/${componentId}/data/${topicName}`), {
+      const response = await fetchWithTimeout(this.getUrl(`components/${componentId}/data/${topicName}`), {
         method: 'PUT',
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(request),
-      });
+      }, 10000); // 10 second timeout for publish
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
