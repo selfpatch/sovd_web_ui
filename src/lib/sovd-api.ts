@@ -86,55 +86,49 @@ export class SovdApiClient {
    * @param path Optional path to get children of (e.g., "/devices/robot1")
    */
   async getEntities(path?: string): Promise<SovdEntity[]> {
-    try {
-      // Root level -> fetch areas
-      if (!path || path === '/') {
-        const response = await fetchWithTimeout(this.getUrl('areas'), {
-          method: 'GET',
-          headers: { 'Accept': 'application/json' },
-        });
-
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const areas = await response.json();
-
-        return areas.map((area: { id: string }) => ({
-          id: area.id,
-          name: area.id,
-          type: 'area',
-          href: `/areas/${area.id}`,
-          hasChildren: true
-        }));
-      }
-
-      // Area level -> fetch components
-      // Path format: /area_id
-      const areaId = path.replace(/^\//, '');
-      // Check if it's a nested path (component inside area)
-      if (areaId.includes('/')) {
-        // We don't support children of components in this simple mapping yet
-        return [];
-      }
-
-      const response = await fetchWithTimeout(this.getUrl(`areas/${areaId}/components`), {
+    // Root level -> fetch areas
+    if (!path || path === '/') {
+      const response = await fetchWithTimeout(this.getUrl('areas'), {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
       });
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const components = await response.json();
+      const areas = await response.json();
 
-      return components.map((comp: { id: string }) => ({
-        id: comp.id,
-        name: comp.id,
-        type: 'component',
-        href: `/components/${comp.id}`,
-        hasChildren: false // Components are leaves in this view
+      return areas.map((area: { id: string }) => ({
+        id: area.id,
+        name: area.id,
+        type: 'area',
+        href: `/areas/${area.id}`,
+        hasChildren: true
       }));
-
-    } catch (error) {
-      console.error(`Failed to fetch entities from ${path || 'root'}:`, error);
-      throw error;
     }
+
+    // Area level -> fetch components
+    // Path format: /area_id
+    const areaId = path.replace(/^\//, '');
+    // Check if it's a nested path (component inside area)
+    if (areaId.includes('/')) {
+      // We don't support children of components in this simple mapping yet
+      return [];
+    }
+
+    const response = await fetchWithTimeout(this.getUrl(`areas/${areaId}/components`), {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const components = await response.json();
+
+    return components.map((comp: { id: string }) => ({
+      id: comp.id,
+      name: comp.id,
+      type: 'component',
+      href: `/components/${comp.id}`,
+      hasChildren: false // Components are leaves in this view
+    }));
   }
 
   /**
@@ -142,44 +136,38 @@ export class SovdApiClient {
    * @param path Entity path (e.g., "/area/component")
    */
   async getEntityDetails(path: string): Promise<SovdEntityDetails> {
-    try {
-      // Path comes from the tree, e.g. "/area_id/component_id"
-      const parts = path.split('/').filter(p => p);
+    // Path comes from the tree, e.g. "/area_id/component_id"
+    const parts = path.split('/').filter(p => p);
 
-      if (parts.length === 2) {
-        const componentId = parts[1];
-        const response = await fetchWithTimeout(this.getUrl(`components/${componentId}/data`), {
-          method: 'GET',
-          headers: { 'Accept': 'application/json' },
-        });
+    if (parts.length === 2) {
+      const componentId = parts[1];
+      const response = await fetchWithTimeout(this.getUrl(`components/${componentId}/data`), {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      });
 
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const topicsData = await response.json() as ComponentTopic[];
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const topicsData = await response.json() as ComponentTopic[];
 
-        // Return entity details with topics array
-        return {
-          id: componentId,
-          name: componentId,
-          type: 'component',
-          href: path,
-          topics: topicsData,
-        };
-      }
-
-      // If it's an area (length 1), maybe return basic info?
-      // For now return empty object or basic info
+      // Return entity details with topics array
       return {
-        id: parts[0],
-        name: parts[0],
-        type: 'area',
+        id: componentId,
+        name: componentId,
+        type: 'component',
         href: path,
-        hasChildren: true
+        topics: topicsData,
       };
-
-    } catch (error) {
-      console.error(`Failed to fetch entity details for ${path}:`, error);
-      throw error;
     }
+
+    // If it's an area (length 1), maybe return basic info?
+    // For now return empty object or basic info
+    return {
+      id: parts[0],
+      name: parts[0],
+      type: 'area',
+      href: path,
+      hasChildren: true
+    };
   }
 
   /**
@@ -200,23 +188,18 @@ export class SovdApiClient {
     topicName: string,
     request: ComponentTopicPublishRequest
   ): Promise<void> {
-    try {
-      const response = await fetchWithTimeout(this.getUrl(`components/${componentId}/data/${topicName}`), {
-        method: 'PUT',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(request),
-      }, 10000); // 10 second timeout for publish
+    const response = await fetchWithTimeout(this.getUrl(`components/${componentId}/data/${topicName}`), {
+      method: 'PUT',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    }, 10000); // 10 second timeout for publish
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
-      }
-    } catch (error) {
-      console.error(`Failed to publish to ${componentId}/${topicName}:`, error);
-      throw error;
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => ({}))) as { error?: string; message?: string };
+      throw new Error(errorData.error || errorData.message || `Server error (HTTP ${response.status})`);
     }
   }
 

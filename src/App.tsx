@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/shallow';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -18,17 +18,18 @@ function App() {
     );
 
     const [showConnectionDialog, setShowConnectionDialog] = useState(false);
+    const autoConnectAttempted = useRef(false);
 
     // Auto-connect on mount if we have a stored URL
     useEffect(() => {
-        if (serverUrl && !isConnected) {
-            Promise.resolve(connect(serverUrl, baseEndpoint))
-                .catch((err) => {
-                    toast.error(
-                        `Auto-connect failed: ${err?.message || 'Please check your server settings.'}`
-                    );
+        if (serverUrl && !isConnected && !autoConnectAttempted.current) {
+            autoConnectAttempted.current = true;
+            connect(serverUrl, baseEndpoint).then((success) => {
+                if (!success) {
+                    toast.error('Auto-connect failed. Please check your server settings.');
                     setShowConnectionDialog(true);
-                });
+                }
+            });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);

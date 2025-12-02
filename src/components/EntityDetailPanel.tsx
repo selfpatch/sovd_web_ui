@@ -55,10 +55,18 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
             return;
         }
 
+        // Parse JSON before setting publishing state to avoid stuck state on parse error
+        let data: unknown;
+        try {
+            data = JSON.parse(inputData);
+        } catch {
+            toast.error('Invalid JSON format. Please check your message data.');
+            return;
+        }
+
         setPublishingTopics(prev => new Set(prev).add(topic.topic));
 
         try {
-            const data = JSON.parse(inputData);
             const messageType = inferMessageType(topic.data);
 
             await client.publishToComponentTopic(selectedEntity.id, topicName, {

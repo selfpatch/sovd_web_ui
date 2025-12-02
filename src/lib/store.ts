@@ -217,16 +217,28 @@ export const useAppStore = create<AppState>()(
         try {
           const details = await client.getEntityDetails(path);
           set({ selectedEntity: details, isLoadingDetails: false });
-        } catch {
-          toast.error(`Failed to load entity details for ${path}`);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          toast.error(`Failed to load entity details for ${path}: ${message}`);
 
           // Set fallback entity to allow panel to render
-          const id = path.split('/').pop() || path;
+          // Infer entity type from path structure
+          const segments = path.split('/').filter(Boolean);
+          const id = segments[segments.length - 1] || path;
+          let inferredType: string;
+          if (segments.length === 1) {
+            inferredType = 'area';
+          } else if (segments.length === 2) {
+            inferredType = 'component';
+          } else {
+            inferredType = 'unknown';
+          }
+
           set({
             selectedEntity: {
               id,
               name: id,
-              type: 'component',
+              type: inferredType,
               href: path,
               topics: [],
               error: 'Failed to load details'
