@@ -1,4 +1,4 @@
-import type { SovdEntity, SovdEntityDetails } from './types';
+import type { SovdEntity, SovdEntityDetails, ComponentTopic, ComponentTopicPublishRequest } from './types';
 
 /**
  * Normalize URL to ensure it has a protocol
@@ -25,9 +25,20 @@ function normalizeUrl(url: string): string {
  */
 export class SovdApiClient {
   private baseUrl: string;
+  private baseEndpoint: string;
 
-  constructor(serverUrl: string) {
+  constructor(serverUrl: string, baseEndpoint: string = '') {
     this.baseUrl = normalizeUrl(serverUrl);
+    // Normalize base endpoint: remove leading/trailing slashes
+    this.baseEndpoint = baseEndpoint.replace(/^\/+|\/+$/g, '');
+  }
+
+  /**
+   * Helper to construct full URL
+   */
+  private getUrl(endpoint: string): string {
+    const prefix = this.baseEndpoint ? `${this.baseEndpoint}/` : '';
+    return `${this.baseUrl}/${prefix}${endpoint}`;
   }
 
   /**
@@ -35,7 +46,7 @@ export class SovdApiClient {
    */
   async ping(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/entities`, {
+      const response = await fetch(this.getUrl('health'), {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -53,38 +64,50 @@ export class SovdApiClient {
    */
   async getEntities(path?: string): Promise<SovdEntity[]> {
     try {
-      const url = path
-        ? `${this.baseUrl}/api/entities${path}`
-        : `${this.baseUrl}/api/entities`;
+      // Root level -> fetch areas
+      if (!path || path === '/') {
+        const response = await fetch(this.getUrl('areas'), {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' },
+        });
 
-      const response = await fetch(url, {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const areas = await response.json();
+
+        return areas.map((area: { id: string }) => ({
+          id: area.id,
+          name: area.id,
+          type: 'area',
+          href: `/areas/${area.id}`,
+          hasChildren: true
+        }));
+      }
+
+      // Area level -> fetch components
+      // Path format: /area_id
+      const areaId = path.replace(/^\//, '');
+      // Check if it's a nested path (component inside area)
+      if (areaId.includes('/')) {
+        // We don't support children of components in this simple mapping yet
+        return [];
+      }
+
+      const response = await fetch(this.getUrl(`areas/${areaId}/components`), {
         method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-        },
+        headers: { 'Accept': 'application/json' },
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const components = await response.json();
 
-      const data = await response.json();
+      return components.map((comp: { id: string }) => ({
+        id: comp.id,
+        name: comp.id,
+        type: 'component',
+        href: `/components/${comp.id}`,
+        hasChildren: false // Components are leaves in this view
+      }));
 
-      // Handle both array response and wrapped response
-      if (Array.isArray(data)) {
-        return data;
-      }
-
-      if (data.entities && Array.isArray(data.entities)) {
-        return data.entities;
-      }
-
-      // Single entity response - wrap in array
-      if (data.id) {
-        return [data];
-      }
-
-      return [];
     } catch (error) {
       console.error(`Failed to fetch entities from ${path || 'root'}:`, error);
       throw error;
@@ -93,22 +116,43 @@ export class SovdApiClient {
 
   /**
    * Get detailed information about a specific entity
-   * @param path Entity path (e.g., "/devices/robot1/components/lidar")
+   * @param path Entity path (e.g., "/area/component")
    */
   async getEntityDetails(path: string): Promise<SovdEntityDetails> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/entities${path}`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-        },
-      });
+      // Path comes from the tree, e.g. "/area_id/component_id"
+      const parts = path.split('/').filter(p => p);
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      if (parts.length === 2) {
+        const componentId = parts[1];
+        const response = await fetch(this.getUrl(`components/${componentId}/data`), {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' },
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const topicsData = await response.json() as ComponentTopic[];
+
+        // Return entity details with topics array
+        return {
+          id: componentId,
+          name: componentId,
+          type: 'component',
+          href: path,
+          topics: topicsData,
+        };
       }
 
-      return await response.json();
+      // If it's an area (length 1), maybe return basic info?
+      // For now return empty object or basic info
+      return {
+        id: parts[0],
+        name: parts[0],
+        type: 'area',
+        href: path,
+        hasChildren: true
+      };
+
     } catch (error) {
       console.error(`Failed to fetch entity details for ${path}:`, error);
       throw error;
@@ -121,11 +165,44 @@ export class SovdApiClient {
   getBaseUrl(): string {
     return this.baseUrl;
   }
+
+  /**
+   * Publish to a component topic
+   * @param componentId Component ID
+   * @param topicName Topic name (relative to component namespace)
+   * @param request Publish request with type and data
+   */
+  async publishToComponentTopic(
+    componentId: string,
+    topicName: string,
+    request: ComponentTopicPublishRequest
+  ): Promise<void> {
+    try {
+      const response = await fetch(this.getUrl(`components/${componentId}/data/${topicName}`), {
+        method: 'PUT',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+    } catch (error) {
+      console.error(`Failed to publish to ${componentId}/${topicName}:`, error);
+      throw error;
+    }
+  }
+
+
 }
 
 /**
  * Create a new SOVD API client instance
  */
-export function createSovdClient(serverUrl: string): SovdApiClient {
-  return new SovdApiClient(serverUrl);
+export function createSovdClient(serverUrl: string, baseEndpoint: string = ''): SovdApiClient {
+  return new SovdApiClient(serverUrl, baseEndpoint);
 }

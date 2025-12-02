@@ -77,8 +77,8 @@ export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
         <Collapsible open={isExpanded} onOpenChange={handleToggle}>
             <div
                 className={cn(
-                    'flex items-center gap-1 py-1.5 px-2 rounded-md cursor-pointer hover:bg-accent transition-colors',
-                    isSelected && 'bg-accent',
+                    'flex items-center gap-1 py-1.5 px-2 rounded-md cursor-pointer hover:bg-accent/50 transition-colors',
+                    isSelected && 'bg-primary/10 text-primary font-medium',
                 )}
                 style={{ paddingLeft: `${depth * 16 + 8}px` }}
                 onClick={handleSelect}
@@ -86,7 +86,7 @@ export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
                 <CollapsibleTrigger asChild onClick={(e) => e.stopPropagation()}>
                     <button
                         className={cn(
-                            'p-0.5 rounded hover:bg-accent-foreground/10 transition-transform',
+                            'p-0.5 rounded hover:bg-primary/10 transition-transform',
                             !hasChildren && 'invisible',
                         )}
                     >
@@ -97,17 +97,24 @@ export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
                                 className={cn(
                                     'w-4 h-4 text-muted-foreground transition-transform',
                                     isExpanded && 'rotate-90',
+                                    isSelected && 'text-primary'
                                 )}
                             />
                         )}
                     </button>
                 </CollapsibleTrigger>
 
-                <Icon className="w-4 h-4 text-muted-foreground shrink-0" />
+                <Icon className={cn(
+                    "w-4 h-4 shrink-0",
+                    isSelected ? "text-primary" : "text-muted-foreground"
+                )} />
 
                 <span className="text-sm truncate">{node.name}</span>
 
-                <span className="text-xs text-muted-foreground ml-auto shrink-0">
+                <span className={cn(
+                    "text-xs ml-auto shrink-0",
+                    isSelected ? "text-primary/70" : "text-muted-foreground"
+                )}>
                     {node.type}
                 </span>
             </div>

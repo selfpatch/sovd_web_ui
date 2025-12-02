@@ -6,10 +6,11 @@ import { ServerConnectionDialog } from '@/components/ServerConnectionDialog';
 import { useAppStore } from '@/lib/store';
 
 function App() {
-    const { isConnected, serverUrl, connect } = useAppStore(
+    const { isConnected, serverUrl, baseEndpoint, connect } = useAppStore(
         useShallow((state) => ({
             isConnected: state.isConnected,
             serverUrl: state.serverUrl,
+            baseEndpoint: state.baseEndpoint,
             connect: state.connect,
         }))
     );
@@ -19,7 +20,7 @@ function App() {
     // Auto-connect on mount if we have a stored URL
     useEffect(() => {
         if (serverUrl && !isConnected) {
-            connect(serverUrl);
+            connect(serverUrl, baseEndpoint);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);

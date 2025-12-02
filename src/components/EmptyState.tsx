@@ -31,12 +31,14 @@ export function EmptyState({ type, onAction }: EmptyStateProps) {
     const { icon: Icon, title, description, actionLabel } = content[type];
 
     return (
-        <div className="flex flex-col items-center justify-center h-full text-center p-8">
-            <Icon className="w-12 h-12 text-muted-foreground mb-4" />
+        <div className="flex flex-col items-center justify-center h-full text-center p-8 animate-in fade-in zoom-in duration-300">
+            <div className="p-4 rounded-full bg-primary/10 mb-4">
+                <Icon className="w-8 h-8 text-primary" />
+            </div>
             <h3 className="text-lg font-semibold mb-2">{title}</h3>
             <p className="text-sm text-muted-foreground max-w-sm">{description}</p>
             {actionLabel && onAction && (
-                <Button className="mt-4" onClick={onAction}>
+                <Button className="mt-6" onClick={onAction}>
                     {actionLabel}
                 </Button>
             )}

@@ -18,20 +18,23 @@ interface ServerConnectionDialogProps {
 }
 
 export function ServerConnectionDialog({ open, onOpenChange }: ServerConnectionDialogProps) {
-    const { serverUrl, isConnecting, connectionError, connect } = useAppStore();
-    const [url, setUrl] = useState(serverUrl || '');
+    const { serverUrl, baseEndpoint, isConnecting, connectionError, connect } = useAppStore();
+    const [url, setUrl] = useState(serverUrl || 'localhost:8080');
+    const [endpoint, setEndpoint] = useState(baseEndpoint || 'api/v1');
 
-    // Update local state when serverUrl changes (e.g., from localStorage)
+    // Update local state when serverUrl/baseEndpoint changes (e.g., from localStorage)
+    // Only update if the dialog is just opened or if the store values change externally
     useEffect(() => {
-        if (serverUrl && !url) {
-            setUrl(serverUrl);
+        if (open) {
+            setUrl(serverUrl || '');
+            setEndpoint(baseEndpoint || '');
         }
-    }, [serverUrl, url]);
+    }, [open, serverUrl, baseEndpoint]);
 
     const handleConnect = async () => {
         if (!url.trim()) return;
 
-        const success = await connect(url.trim());
+        const success = await connect(url.trim(), endpoint.trim());
         if (success) {
             onOpenChange(false);
         }
@@ -54,7 +57,7 @@ export function ServerConnectionDialog({ open, onOpenChange }: ServerConnectionD
                         <div>
                             <DialogTitle>Connect to SOVD Server</DialogTitle>
                             <DialogDescription>
-                                Enter the URL or IP address of your SOVD server
+                                Enter the URL and base endpoint of your SOVD server
                             </DialogDescription>
                         </div>
                     </div>
@@ -76,6 +79,23 @@ export function ServerConnectionDialog({ open, onOpenChange }: ServerConnectionD
                         />
                         <p className="text-xs text-muted-foreground">
                             You can enter just IP:port or a full URL with protocol
+                        </p>
+                    </div>
+
+                    <div className="space-y-2">
+                        <label htmlFor="base-endpoint" className="text-sm font-medium">
+                            Base Endpoint
+                        </label>
+                        <Input
+                            id="base-endpoint"
+                            placeholder="e.g. api/v1 (optional)"
+                            value={endpoint}
+                            onChange={(e) => setEndpoint(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            disabled={isConnecting}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            The path prefix for SOVD entities (leave empty for root)
                         </p>
                     </div>
 
