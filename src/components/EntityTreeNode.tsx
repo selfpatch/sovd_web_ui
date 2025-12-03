@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
 import { useShallow } from 'zustand/shallow';
-import { ChevronRight, Loader2, Server, Folder, FileJson, Box, MessageSquare } from 'lucide-react';
+import { ChevronRight, Loader2, Server, Folder, FileJson, Box, MessageSquare, ArrowUp, ArrowDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useAppStore } from '@/lib/store';
-import type { EntityTreeNode as EntityTreeNodeType } from '@/lib/types';
+import type { EntityTreeNode as EntityTreeNodeType, TopicNodeData } from '@/lib/types';
 
 interface EntityTreeNodeProps {
     node: EntityTreeNodeType;
@@ -32,6 +32,13 @@ function getEntityIcon(type: string) {
     }
 }
 
+/**
+ * Check if node data is TopicNodeData (from topicsInfo)
+ */
+function isTopicNodeData(data: unknown): data is TopicNodeData {
+    return !!data && typeof data === 'object' && 'isPublisher' in data && 'isSubscriber' in data;
+}
+
 export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
     const {
         expandedPaths,
@@ -56,6 +63,9 @@ export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
     const isSelected = selectedPath === node.path;
     const hasChildren = node.hasChildren !== false; // Default to true if not specified
     const Icon = getEntityIcon(node.type);
+
+    // Get topic direction info if available
+    const topicData = isTopicNodeData(node.data) ? node.data : null;
 
     // Load children when expanded and no children loaded yet
     useEffect(() => {
@@ -111,10 +121,22 @@ export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
                     isSelected ? "text-primary" : "text-muted-foreground"
                 )} />
 
-                <span className="text-sm truncate">{node.name}</span>
+                <span className="text-sm truncate flex-1">{node.name}</span>
+
+                {/* Topic direction indicators */}
+                {topicData && (
+                    <div className="flex items-center gap-0.5 mr-1" title={`${topicData.isPublisher ? 'Publishes' : ''}${topicData.isPublisher && topicData.isSubscriber ? ' & ' : ''}${topicData.isSubscriber ? 'Subscribes' : ''}`}>
+                        {topicData.isPublisher && (
+                            <ArrowUp className="w-3 h-3 text-green-500" />
+                        )}
+                        {topicData.isSubscriber && (
+                            <ArrowDown className="w-3 h-3 text-blue-500" />
+                        )}
+                    </div>
+                )}
 
                 <span className={cn(
-                    "text-xs ml-auto shrink-0",
+                    "text-xs shrink-0",
                     isSelected ? "text-primary/70" : "text-muted-foreground"
                 )}>
                     {node.type}

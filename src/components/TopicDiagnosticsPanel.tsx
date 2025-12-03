@@ -1,0 +1,302 @@
+import { useState } from 'react';
+import { Radio, RefreshCw, Copy, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { JsonFormViewer } from '@/components/JsonFormViewer';
+import { TopicPublishForm } from '@/components/TopicPublishForm';
+import type { ComponentTopic, TopicEndpoint, QosProfile } from '@/lib/types';
+import type { SovdApiClient } from '@/lib/sovd-api';
+import { cn } from '@/lib/utils';
+
+interface TopicDiagnosticsPanelProps {
+    /** Topic data from the API */
+    topic: ComponentTopic;
+    /** Component ID for publishing */
+    componentId: string;
+    /** API client for publishing */
+    client: SovdApiClient | null;
+    /** Whether a refresh is in progress */
+    isRefreshing?: boolean;
+    /** Callback when refresh is requested */
+    onRefresh?: () => void;
+}
+
+/**
+ * Format QoS profile for display
+ */
+function formatQos(qos: QosProfile): string {
+    const parts = [
+        qos.reliability !== 'unknown' ? qos.reliability : null,
+        qos.durability !== 'volatile' ? qos.durability : null,
+        qos.history === 'keep_last' ? `depth=${qos.depth}` : qos.history,
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join(', ') : 'default';
+}
+
+/**
+ * Check if QoS profiles are compatible between publishers and subscribers
+ */
+function checkQosCompatibility(publishers: TopicEndpoint[], subscribers: TopicEndpoint[]): {
+    compatible: boolean;
+    warning?: string;
+} {
+    if (publishers.length === 0 || subscribers.length === 0) {
+        return { compatible: true };
+    }
+
+    // Check reliability mismatch (RELIABLE sub needs RELIABLE pub)
+    const reliableSubs = subscribers.filter(s => s.qos.reliability === 'reliable');
+    const bestEffortPubs = publishers.filter(p => p.qos.reliability === 'best_effort');
+
+    if (reliableSubs.length > 0 && bestEffortPubs.length > 0) {
+        return {
+            compatible: false,
+            warning: 'QoS mismatch: Reliable subscribers cannot receive from best_effort publishers',
+        };
+    }
+
+    // Check durability mismatch (TRANSIENT_LOCAL sub may not get late-joining data from VOLATILE pub)
+    const transientSubs = subscribers.filter(s => s.qos.durability === 'transient_local');
+    const volatilePubs = publishers.filter(p => p.qos.durability === 'volatile');
+
+    if (transientSubs.length > 0 && volatilePubs.length > 0) {
+        return {
+            compatible: true,
+            warning: 'Transient local subscribers may miss late-joining data from volatile publishers',
+        };
+    }
+
+    return { compatible: true };
+}
+
+/**
+ * Connection Status Section
+ */
+function ConnectionStatus({ topic }: { topic: ComponentTopic }) {
+    const pubCount = topic.publisher_count ?? topic.publishers?.length ?? 0;
+    const subCount = topic.subscriber_count ?? topic.subscribers?.length ?? 0;
+    const hasData = topic.status === 'data' && topic.data !== null && topic.data !== undefined;
+
+    const qosCheck = checkQosCompatibility(topic.publishers || [], topic.subscribers || []);
+
+    const statusIcon = hasData ? (
+        <CheckCircle2 className="w-4 h-4 text-green-500" />
+    ) : pubCount > 0 ? (
+        <AlertTriangle className="w-4 h-4 text-amber-500" />
+    ) : (
+        <XCircle className="w-4 h-4 text-muted-foreground" />
+    );
+
+    const statusText = hasData
+        ? 'Active'
+        : pubCount > 0
+            ? 'Waiting for data'
+            : 'No publishers';
+
+    return (
+        <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    {statusIcon}
+                    <span className="text-sm font-medium">{statusText}</span>
+                </div>
+                <div className="flex items-center gap-4 text-sm">
+                    <span className="flex items-center gap-1">
+                        <Badge variant="outline" className="text-xs">
+                            {pubCount} pub
+                        </Badge>
+                    </span>
+                    <span className="flex items-center gap-1">
+                        <Badge variant="outline" className="text-xs">
+                            {subCount} sub
+                        </Badge>
+                    </span>
+                </div>
+            </div>
+
+            {/* QoS Warning */}
+            {qosCheck.warning && (
+                <div className={cn(
+                    "flex items-start gap-2 text-xs p-2 rounded",
+                    qosCheck.compatible ? "bg-amber-500/10 text-amber-600" : "bg-destructive/10 text-destructive"
+                )}>
+                    <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                    <span>{qosCheck.warning}</span>
+                </div>
+            )}
+        </div>
+    );
+}
+
+/**
+ * QoS Details Section
+ */
+function QosDetails({ publishers, subscribers }: { publishers?: TopicEndpoint[]; subscribers?: TopicEndpoint[] }) {
+    const [isOpen, setIsOpen] = useState(false);
+
+    if ((!publishers || publishers.length === 0) && (!subscribers || subscribers.length === 0)) {
+        return null;
+    }
+
+    return (
+        <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+            <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm" className="w-full justify-between h-8 px-2">
+                    <span className="text-xs font-medium">QoS Details</span>
+                    <span className="text-xs text-muted-foreground">
+                        {isOpen ? 'Hide' : 'Show'}
+                    </span>
+                </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-3 pt-2">
+                {publishers && publishers.length > 0 && (
+                    <div>
+                        <div className="text-xs font-medium text-muted-foreground mb-1">Publishers</div>
+                        <div className="space-y-1">
+                            {publishers.map((pub, idx) => (
+                                <div key={idx} className="flex items-center justify-between text-xs p-1.5 rounded bg-muted/50">
+                                    <span className="font-mono truncate">{pub.fqn}</span>
+                                    <span className="text-muted-foreground">{formatQos(pub.qos)}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+                {subscribers && subscribers.length > 0 && (
+                    <div>
+                        <div className="text-xs font-medium text-muted-foreground mb-1">Subscribers</div>
+                        <div className="space-y-1">
+                            {subscribers.map((sub, idx) => (
+                                <div key={idx} className="flex items-center justify-between text-xs p-1.5 rounded bg-muted/50">
+                                    <span className="font-mono truncate">{sub.fqn}</span>
+                                    <span className="text-muted-foreground">{formatQos(sub.qos)}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </CollapsibleContent>
+        </Collapsible>
+    );
+}
+
+/**
+ * TopicDiagnosticsPanel - Full diagnostic view for a topic
+ */
+export function TopicDiagnosticsPanel({
+    topic,
+    componentId,
+    client,
+    isRefreshing = false,
+    onRefresh,
+}: TopicDiagnosticsPanelProps) {
+    const [publishValue, setPublishValue] = useState<unknown>(
+        topic.type_info?.default_value || topic.data || {}
+    );
+
+    const hasData = topic.status === 'data' && topic.data !== null && topic.data !== undefined;
+    const canPublish = !!(topic.type || topic.type_info || topic.data);
+
+    const handleCopyFromLast = () => {
+        if (topic.data) {
+            setPublishValue(JSON.parse(JSON.stringify(topic.data)));
+        }
+    };
+
+    return (
+        <Card>
+            <CardHeader>
+                <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                        <Radio className={cn(
+                            "w-5 h-5 shrink-0",
+                            hasData ? "text-primary" : "text-muted-foreground"
+                        )} />
+                        <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <CardTitle className="text-base">{topic.topic}</CardTitle>
+                                {topic.type && (
+                                    <span className="text-xs text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded">
+                                        {topic.type}
+                                    </span>
+                                )}
+                            </div>
+                            <CardDescription className="text-xs mt-1">
+                                Topic diagnostics and data access
+                            </CardDescription>
+                        </div>
+                    </div>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={onRefresh}
+                        disabled={isRefreshing}
+                    >
+                        <RefreshCw className={cn("w-4 h-4 mr-2", isRefreshing && "animate-spin")} />
+                        Refresh
+                    </Button>
+                </div>
+            </CardHeader>
+
+            <CardContent className="space-y-4">
+                {/* Connection Status */}
+                <ConnectionStatus topic={topic} />
+
+                {/* QoS Details (collapsible) */}
+                <QosDetails publishers={topic.publishers} subscribers={topic.subscribers} />
+
+                {/* Last Received Value */}
+                <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Last Received Value</span>
+                        {hasData && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={handleCopyFromLast}
+                                className="h-7 text-xs"
+                            >
+                                <Copy className="w-3 h-3 mr-1" />
+                                Copy to Publish
+                            </Button>
+                        )}
+                    </div>
+                    {hasData ? (
+                        <JsonFormViewer
+                            data={topic.data}
+                            schema={topic.type_info?.schema}
+                            editable={false}
+                            timestamp={topic.timestamp}
+                        />
+                    ) : (
+                        <div className="rounded-lg border bg-muted/30 p-4 text-center">
+                            <p className="text-sm text-muted-foreground">
+                                {topic.status === 'metadata_only'
+                                    ? 'No data received yet. Schema available for publishing.'
+                                    : 'Topic exists but is not publishing messages.'}
+                            </p>
+                        </div>
+                    )}
+                </div>
+
+                {/* Publish Section */}
+                {canPublish && client && (
+                    <div className="border-t pt-4 space-y-2">
+                        <span className="text-sm font-medium">Publish Message</span>
+                        <TopicPublishForm
+                            topic={topic}
+                            componentId={componentId}
+                            client={client}
+                            initialValue={publishValue}
+                            onValueChange={setPublishValue}
+                        />
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
+export default TopicDiagnosticsPanel;

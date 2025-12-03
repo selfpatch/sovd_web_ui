@@ -1,9 +1,23 @@
 import type { SchemaFieldType, TopicSchema } from '@/lib/types';
 
 /**
+ * Check if a type is a primitive ROS 2 type
+ */
+export function isPrimitiveType(type: string): boolean {
+    const primitives = [
+        'bool', 'boolean',
+        'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64',
+        'float', 'float32', 'float64', 'double',
+        'string', 'wstring',
+        'byte', 'char',
+    ];
+    return primitives.includes(type.toLowerCase());
+}
+
+/**
  * Check if a type is numeric
  */
-function isNumericType(type: string): boolean {
+export function isNumericType(type: string): boolean {
     const numerics = [
         'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64',
         'float', 'float32', 'float64', 'double',
@@ -15,14 +29,14 @@ function isNumericType(type: string): boolean {
 /**
  * Check if a type is boolean
  */
-function isBooleanType(type: string): boolean {
+export function isBooleanType(type: string): boolean {
     return type.toLowerCase() === 'bool' || type.toLowerCase() === 'boolean';
 }
 
 /**
  * Get default value for a schema field
  */
-function getDefaultValue(schema: SchemaFieldType): unknown {
+export function getDefaultValue(schema: SchemaFieldType): unknown {
     if (schema.type === 'array') {
         return [];
     }

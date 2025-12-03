@@ -15,6 +15,10 @@ interface TopicPublishFormProps {
     componentId: string;
     /** API client instance */
     client: SovdApiClient;
+    /** External initial value (overrides topic-based defaults) */
+    initialValue?: unknown;
+    /** Callback when value changes */
+    onValueChange?: (value: unknown) => void;
 }
 
 type ViewMode = 'form' | 'json';
@@ -55,17 +59,39 @@ function getInitialValues(topic: ComponentTopic): Record<string, unknown> {
  * Form for publishing messages to a ROS 2 topic
  * Supports both schema-based form view and raw JSON editing
  */
-export function TopicPublishForm({ topic, componentId, client }: TopicPublishFormProps) {
+export function TopicPublishForm({ topic, componentId, client, initialValue, onValueChange }: TopicPublishFormProps) {
     const [viewMode, setViewMode] = useState<ViewMode>('form');
-    const [formValues, setFormValues] = useState<Record<string, unknown>>(() => getInitialValues(topic));
+    const [formValues, setFormValues] = useState<Record<string, unknown>>(() => {
+        if (initialValue && typeof initialValue === 'object') {
+            return initialValue as Record<string, unknown>;
+        }
+        return getInitialValues(topic);
+    });
     const [isPublishing, setIsPublishing] = useState(false);
 
-    // Reset form when switching topics
+    // Reset form when switching topics.
+    // Note: We intentionally only depend on topic.topic (the topic path) to reset on topic change.
+    // Other topic properties (data, type_info) may change frequently without requiring a form reset.
     useEffect(() => {
-        const initial = getInitialValues(topic);
+        const initial = initialValue && typeof initialValue === 'object'
+            ? initialValue as Record<string, unknown>
+            : getInitialValues(topic);
         setFormValues(initial);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [topic.topic]);
+
+    // Sync with external initialValue changes
+    useEffect(() => {
+        if (initialValue && typeof initialValue === 'object') {
+            setFormValues(initialValue as Record<string, unknown>);
+        }
+    }, [initialValue]);
+
+    // Notify parent of value changes
+    const handleFormValuesChange = (newValues: Record<string, unknown>) => {
+        setFormValues(newValues);
+        onValueChange?.(newValues);
+    };
 
     // Always compute complete JSON from schema + current form values
     const jsonValue = useMemo(() => {
@@ -93,7 +119,7 @@ export function TopicPublishForm({ topic, componentId, client }: TopicPublishFor
         try {
             const parsed = JSON.parse(newJson);
             if (typeof parsed === 'object' && parsed !== null) {
-                setFormValues(parsed);
+                handleFormValuesChange(parsed);
             }
         } catch {
             // Invalid JSON - don't update form values
@@ -101,7 +127,11 @@ export function TopicPublishForm({ topic, componentId, client }: TopicPublishFor
     };
 
     const handlePublish = async () => {
-        const topicName = topic.topic.split('/').pop() || topic.topic;
+        // Extract topic name - remove leading slash and component namespace prefix
+        // Full topic path example: "/powertrain/engine/temperature"
+        // We need just the last segment for the API: "temperature"
+        const topicSegments = topic.topic.split('/').filter(s => s);
+        const topicName = topicSegments[topicSegments.length - 1] || topic.topic;
 
         // Validate and get data to publish
         let dataToPublish: unknown;
@@ -113,10 +143,16 @@ export function TopicPublishForm({ topic, componentId, client }: TopicPublishFor
                 return;
             }
         } else {
-            dataToPublish = formValues;
+            // Merge form values with schema defaults for completeness
+            if (topic.type_info?.schema) {
+                const defaults = getSchemaDefaults(topic.type_info.schema as TopicSchema);
+                dataToPublish = deepMerge(defaults, formValues);
+            } else {
+                dataToPublish = formValues;
+            }
         }
 
-        // Get message type
+        // Get message type - prefer explicit type, fall back to inference
         const messageType = topic.type || inferMessageType(topic.data);
 
         setIsPublishing(true);
@@ -134,7 +170,12 @@ export function TopicPublishForm({ topic, componentId, client }: TopicPublishFor
         }
     };
 
-    // Helper to infer message type from data structure (fallback)
+    /**
+     * Fallback heuristic to infer message type from data structure.
+     * This is unreliable and should only be used when topic.type is not available.
+     * @param data - The topic data to analyze
+     * @returns Best guess at message type, defaults to std_msgs/msg/String
+     */
     const inferMessageType = (data: unknown): string => {
         if (data && typeof data === 'object') {
             const keys = Object.keys(data as object);
@@ -145,6 +186,8 @@ export function TopicPublishForm({ topic, componentId, client }: TopicPublishFor
                 return 'std_msgs/msg/String';
             }
         }
+        // Warning: falling back to String type - message structure may not match
+        console.warn(`Could not determine message type for topic ${topic.topic}, defaulting to std_msgs/msg/String`);
         return 'std_msgs/msg/String';
     };
 
@@ -187,9 +230,9 @@ export function TopicPublishForm({ topic, componentId, client }: TopicPublishFor
             {viewMode === 'form' && hasSchema ? (
                 <div className="p-3 rounded-md border bg-card">
                     <SchemaForm
-                        schema={topic.type_info!.schema as TopicSchema}
+                        schema={topic.type_info?.schema as TopicSchema}
                         value={formValues}
-                        onChange={setFormValues}
+                        onChange={handleFormValuesChange}
                     />
                 </div>
             ) : (

@@ -1,8 +1,9 @@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { SchemaFieldType, TopicSchema } from '@/lib/types';
+import { isPrimitiveType, isNumericType, isBooleanType, getDefaultValue } from '@/lib/schema-utils';
 
 interface SchemaFormFieldProps {
     /** Field name to display */
@@ -18,60 +19,78 @@ interface SchemaFormFieldProps {
 }
 
 /**
- * Check if a type is a primitive ROS 2 type
+ * Numeric input field with better UX for typing negative numbers
  */
-function isPrimitiveType(type: string): boolean {
-    const primitives = [
-        'bool', 'boolean',
-        'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64',
-        'float', 'float32', 'float64', 'double',
-        'string', 'wstring',
-        'byte', 'char',
-    ];
-    return primitives.includes(type.toLowerCase());
+interface NumericFieldProps {
+    name: string;
+    schemaType: string;
+    value: unknown;
+    onChange: (value: number) => void;
+    indent: number;
 }
 
-/**
- * Check if a type is numeric
- */
-function isNumericType(type: string): boolean {
-    const numerics = [
-        'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64',
-        'float', 'float32', 'float64', 'double',
-        'byte',
-    ];
-    return numerics.includes(type.toLowerCase());
-}
+const INTEGER_TYPES = ['int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64', 'byte', 'char'];
 
-/**
- * Check if a type is boolean
- */
-function isBooleanType(type: string): boolean {
-    return type.toLowerCase() === 'bool' || type.toLowerCase() === 'boolean';
-}
+function NumericField({ name, schemaType, value, onChange, indent }: NumericFieldProps) {
+    const isInteger = INTEGER_TYPES.includes(schemaType.toLowerCase());
+    const isUnsigned = schemaType.startsWith('uint') || schemaType === 'byte';
 
-/**
- * Get default value for a schema type
- */
-function getDefaultValue(schema: SchemaFieldType): unknown {
-    if (schema.type === 'array') {
-        return [];
-    }
-    if (schema.fields) {
-        // Nested object - recursively create defaults
-        const obj: Record<string, unknown> = {};
-        for (const [key, fieldSchema] of Object.entries(schema.fields)) {
-            obj[key] = getDefaultValue(fieldSchema);
+    // Track raw input for better UX (allow typing "-" without immediate reset)
+    const [rawInput, setRawInput] = useState<string>(
+        value === undefined || value === null ? '0' : String(value)
+    );
+
+    // Sync rawInput when value prop changes externally (e.g., parent resets form)
+    // Note: rawInput is intentionally omitted from dependencies to avoid infinite loops.
+    // This effect only runs when the external `value` changes, not when the user types.
+    useEffect(() => {
+        const expectedRaw = value === undefined || value === null ? '0' : String(value);
+        // Only update if not in intermediate typing state
+        if (rawInput !== '-' && rawInput !== '' && rawInput !== expectedRaw) {
+            setRawInput(expectedRaw);
         }
-        return obj;
-    }
-    if (isNumericType(schema.type)) {
-        return 0;
-    }
-    if (isBooleanType(schema.type)) {
-        return false;
-    }
-    return '';
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [value]);
+
+    return (
+        <div style={{ marginLeft: indent }} className="flex items-center gap-3">
+            <label className="text-sm font-medium min-w-[120px]">{name}</label>
+            <Input
+                type="text"
+                inputMode="decimal"
+                value={rawInput}
+                onChange={(e) => {
+                    const newRaw = e.target.value;
+                    setRawInput(newRaw);
+
+                    // Allow intermediate states while typing
+                    if (newRaw === '' || newRaw === '-' || newRaw === '.') {
+                        return; // Don't update parent yet
+                    }
+
+                    let val = isInteger ? parseInt(newRaw, 10) : parseFloat(newRaw);
+                    if (isNaN(val)) return; // Invalid, don't update
+                    if (isUnsigned && val < 0) val = 0;
+                    onChange(val);
+                }}
+                onBlur={() => {
+                    // On blur, commit final value
+                    let val: number;
+                    if (rawInput === '' || rawInput === '-' || rawInput === '.') {
+                        val = 0;
+                    } else {
+                        val = isInteger ? parseInt(rawInput, 10) : parseFloat(rawInput);
+                        if (isNaN(val)) val = 0;
+                        if (isUnsigned && val < 0) val = 0;
+                    }
+                    setRawInput(String(val));
+                    onChange(val);
+                }}
+                className="h-8 w-40 font-mono text-xs"
+            />
+            <span className="text-xs text-muted-foreground">{schemaType}</span>
+        </div>
+    );
 }
 
 /**
@@ -128,7 +147,7 @@ export function SchemaFormField({ name, schema, value, onChange, depth = 0 }: Sc
                 {isExpanded && (
                     <div className="pl-4 border-l border-muted space-y-2">
                         {arrayValue.map((item, index) => (
-                            <div key={index} className="flex items-start gap-2">
+                            <div key={`${index}-${JSON.stringify(item).slice(0, 32)}`} className="flex items-start gap-2">
                                 <SchemaFormField
                                     name={`[${index}]`}
                                     schema={schema.items!}
@@ -214,33 +233,14 @@ export function SchemaFormField({ name, schema, value, onChange, depth = 0 }: Sc
 
         // Numeric field
         if (isNumericType(schema.type)) {
-            const isInteger = !schema.type.includes('float') && schema.type !== 'double';
-            const isUnsigned = schema.type.startsWith('uint') || schema.type === 'byte';
-
             return (
-                <div style={{ marginLeft: indent }} className="flex items-center gap-3">
-                    <label className="text-sm font-medium min-w-[120px]">{name}</label>
-                    <Input
-                        type="number"
-                        step={isInteger ? 1 : 0.001}
-                        min={isUnsigned ? 0 : undefined}
-                        value={value as number ?? 0}
-                        onChange={(e) => {
-                            const rawValue = e.target.value;
-                            // Allow empty input or just a minus sign while typing
-                            if (rawValue === '' || rawValue === '-') {
-                                onChange(0);
-                                return;
-                            }
-                            let val = isInteger ? parseInt(rawValue, 10) : parseFloat(rawValue);
-                            if (isNaN(val)) val = 0;
-                            if (isUnsigned && val < 0) val = 0;
-                            onChange(val);
-                        }}
-                        className="h-8 w-40 font-mono text-xs"
-                    />
-                    <span className="text-xs text-muted-foreground">{schema.type}</span>
-                </div>
+                <NumericField
+                    name={name}
+                    schemaType={schema.type}
+                    value={value}
+                    onChange={onChange}
+                    indent={indent}
+                />
             );
         }
 
