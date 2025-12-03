@@ -1,15 +1,45 @@
+import { useState, useMemo } from 'react';
 import { useShallow } from 'zustand/shallow';
-import { Server, Settings, RefreshCw } from 'lucide-react';
+import { Server, Settings, RefreshCw, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { EntityTreeNode } from '@/components/EntityTreeNode';
 import { EmptyState } from '@/components/EmptyState';
 import { useAppStore } from '@/lib/store';
+import type { EntityTreeNode as EntityTreeNodeType } from '@/lib/types';
 
 interface EntityTreeSidebarProps {
     onSettingsClick: () => void;
 }
 
+/**
+ * Recursively filter tree nodes by search query
+ * Returns nodes that match or have matching descendants
+ */
+function filterTree(nodes: EntityTreeNodeType[], query: string): EntityTreeNodeType[] {
+    const lowerQuery = query.toLowerCase();
+    const result: EntityTreeNodeType[] = [];
+
+    for (const node of nodes) {
+        const nameMatches = node.name.toLowerCase().includes(lowerQuery);
+        const typeMatches = node.type.toLowerCase().includes(lowerQuery);
+        const filteredChildren = node.children ? filterTree(node.children, query) : undefined;
+
+        // Include node if it matches or has matching children
+        if (nameMatches || typeMatches || (filteredChildren && filteredChildren.length > 0)) {
+            result.push({
+                ...node,
+                children: filteredChildren && filteredChildren.length > 0 ? filteredChildren : node.children,
+            });
+        }
+    }
+
+    return result;
+}
+
 export function EntityTreeSidebar({ onSettingsClick }: EntityTreeSidebarProps) {
+    const [searchQuery, setSearchQuery] = useState('');
+
     const {
         isConnected,
         serverUrl,
@@ -24,8 +54,19 @@ export function EntityTreeSidebar({ onSettingsClick }: EntityTreeSidebarProps) {
         }))
     );
 
+    const filteredEntities = useMemo(() => {
+        if (!searchQuery.trim()) {
+            return rootEntities;
+        }
+        return filterTree(rootEntities, searchQuery.trim());
+    }, [rootEntities, searchQuery]);
+
     const handleRefresh = () => {
         loadRootEntities();
+    };
+
+    const handleClearSearch = () => {
+        setSearchQuery('');
     };
 
     return (
@@ -82,13 +123,47 @@ export function EntityTreeSidebar({ onSettingsClick }: EntityTreeSidebarProps) {
                 </div>
             )}
 
+            {/* Search bar */}
+            {isConnected && (
+                <div className="px-3 py-2 border-b">
+                    <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input
+                            type="text"
+                            placeholder="Search entities..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-8 pr-8 h-8 text-sm"
+                        />
+                        {searchQuery && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
+                                onClick={handleClearSearch}
+                            >
+                                <X className="w-3 h-3" />
+                            </Button>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* Tree content */}
             <div className="flex-1 overflow-y-auto p-2">
                 {!isConnected ? (
                     <EmptyState type="no-connection" />
+                ) : filteredEntities.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-32 text-muted-foreground text-sm">
+                        <Search className="w-8 h-8 mb-2 opacity-50" />
+                        <p>No entities found</p>
+                        {searchQuery && (
+                            <p className="text-xs mt-1">Try a different search term</p>
+                        )}
+                    </div>
                 ) : (
                     <div className="space-y-0.5">
-                        {rootEntities.map((entity) => (
+                        {filteredEntities.map((entity) => (
                             <EntityTreeNode key={entity.path} node={entity} depth={0} />
                         ))}
                     </div>

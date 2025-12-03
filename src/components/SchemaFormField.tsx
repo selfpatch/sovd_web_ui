@@ -222,16 +222,22 @@ export function SchemaFormField({ name, schema, value, onChange, depth = 0 }: Sc
                     <label className="text-sm font-medium min-w-[120px]">{name}</label>
                     <Input
                         type="number"
-                        step={isInteger ? 1 : 'any'}
+                        step={isInteger ? 1 : 0.001}
                         min={isUnsigned ? 0 : undefined}
                         value={value as number ?? 0}
                         onChange={(e) => {
-                            let val = isInteger ? parseInt(e.target.value, 10) : parseFloat(e.target.value);
+                            const rawValue = e.target.value;
+                            // Allow empty input or just a minus sign while typing
+                            if (rawValue === '' || rawValue === '-') {
+                                onChange(0);
+                                return;
+                            }
+                            let val = isInteger ? parseInt(rawValue, 10) : parseFloat(rawValue);
                             if (isNaN(val)) val = 0;
                             if (isUnsigned && val < 0) val = 0;
                             onChange(val);
                         }}
-                        className="h-8 w-32 font-mono text-xs"
+                        className="h-8 w-40 font-mono text-xs"
                     />
                     <span className="text-xs text-muted-foreground">{schema.type}</span>
                 </div>

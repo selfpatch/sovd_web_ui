@@ -32,6 +32,7 @@ export interface AppState {
   loadChildren: (path: string) => Promise<void>;
   toggleExpanded: (path: string) => void;
   selectEntity: (path: string) => Promise<void>;
+  selectTopicDirect: (topicPath: string, topicData: ComponentTopic) => void;
   clearSelection: () => void;
 }
 
@@ -372,6 +373,38 @@ export const useAppStore = create<AppState>()(
             isLoadingDetails: false
           });
         }
+      },
+
+      // Select a topic directly using data we already have (no API call)
+      selectTopicDirect: (topicPath: string, topicData: ComponentTopic) => {
+        const { expandedPaths } = get();
+
+        // topicPath format: /area/component/full_topic_name
+        // where full_topic_name can contain slashes (e.g., /powertrain/engine/temperature)
+        // We need to find the component path which is the selectedPath before this call
+        // Since topicPath = componentPath + "/" + topicData.topic, we can derive it:
+        const topicName = topicData.topic;
+        const componentPath = topicPath.substring(0, topicPath.length - topicName.length - 1);
+
+        // Ensure parent component is expanded so the topic is visible in tree
+        const newExpandedPaths = expandedPaths.includes(componentPath)
+          ? expandedPaths
+          : [...expandedPaths, componentPath];
+
+        set({
+          selectedPath: topicPath,
+          expandedPaths: newExpandedPaths,
+          isLoadingDetails: false,
+          selectedEntity: {
+            id: topicName,
+            name: topicName,
+            href: topicPath,
+            topics: [topicData],
+            ...topicData,
+            // IMPORTANT: Set type AFTER spreading topicData to ensure it's 'topic'
+            type: 'topic',
+          }
+        });
       },
 
       // Clear selection

@@ -1,5 +1,5 @@
 import { useShallow } from 'zustand/shallow';
-import { Copy, Loader2, Radio } from 'lucide-react';
+import { Copy, Loader2, Radio, ChevronRight } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/EmptyState';
@@ -18,6 +18,7 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
         isLoadingDetails,
         isConnected,
         client,
+        selectTopicDirect,
     } = useAppStore(
         useShallow((state: AppState) => ({
             selectedPath: state.selectedPath,
@@ -25,6 +26,7 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
             isLoadingDetails: state.isLoadingDetails,
             isConnected: state.isConnected,
             client: state.client,
+            selectTopicDirect: state.selectTopicDirect,
         }))
     );
 
@@ -188,21 +190,31 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
                         <div className="space-y-6">
                             {/* Topics List - Summary View for Component */}
                             <div className="grid gap-4 md:grid-cols-2">
-                                {(selectedEntity.topics as ComponentTopic[]).map((topic) => (
-                                    <Card key={topic.topic} className="hover:bg-accent/50 transition-colors">
-                                        <CardHeader className="p-4">
-                                            <div className="flex items-center gap-3">
-                                                <Radio className="w-4 h-4 text-muted-foreground" />
-                                                <div className="min-w-0">
-                                                    <div className="font-medium truncate text-sm">{topic.topic}</div>
-                                                    <div className="text-xs text-muted-foreground truncate">
-                                                        {topic.type || 'Unknown Type'}
+                                {(selectedEntity.topics as ComponentTopic[]).map((topic) => {
+                                    // Topic path in tree is: componentPath + "/" + topic.topic (full topic name)
+                                    const topicPath = `${selectedPath}/${topic.topic}`;
+
+                                    return (
+                                        <Card
+                                            key={topic.topic}
+                                            className="hover:bg-accent/50 transition-colors cursor-pointer group"
+                                            onClick={() => selectTopicDirect(topicPath, topic)}
+                                        >
+                                            <CardHeader className="p-4">
+                                                <div className="flex items-center gap-3">
+                                                    <Radio className="w-4 h-4 text-muted-foreground" />
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="font-medium truncate text-sm">{topic.topic}</div>
+                                                        <div className="text-xs text-muted-foreground truncate">
+                                                            {topic.type || 'Unknown Type'}
+                                                        </div>
                                                     </div>
+                                                    <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                                                 </div>
-                                            </div>
-                                        </CardHeader>
-                                    </Card>
-                                ))}
+                                            </CardHeader>
+                                        </Card>
+                                    );
+                                })}
                             </div>
                         </div>
                     ) : (
