@@ -101,7 +101,11 @@ export function TopicPublishForm({ topic, componentId, client }: TopicPublishFor
     };
 
     const handlePublish = async () => {
-        const topicName = topic.topic.split('/').pop() || topic.topic;
+        // Extract topic name - remove leading slash and component namespace prefix
+        // Full topic path example: "/powertrain/engine/temperature"
+        // We need just the last segment for the API: "temperature"
+        const topicSegments = topic.topic.split('/').filter(s => s);
+        const topicName = topicSegments[topicSegments.length - 1] || topic.topic;
 
         // Validate and get data to publish
         let dataToPublish: unknown;
@@ -116,7 +120,7 @@ export function TopicPublishForm({ topic, componentId, client }: TopicPublishFor
             dataToPublish = formValues;
         }
 
-        // Get message type
+        // Get message type - prefer explicit type, fall back to inference
         const messageType = topic.type || inferMessageType(topic.data);
 
         setIsPublishing(true);
@@ -134,7 +138,12 @@ export function TopicPublishForm({ topic, componentId, client }: TopicPublishFor
         }
     };
 
-    // Helper to infer message type from data structure (fallback)
+    /**
+     * Fallback heuristic to infer message type from data structure.
+     * This is unreliable and should only be used when topic.type is not available.
+     * @param data - The topic data to analyze
+     * @returns Best guess at message type, defaults to std_msgs/msg/String
+     */
     const inferMessageType = (data: unknown): string => {
         if (data && typeof data === 'object') {
             const keys = Object.keys(data as object);
@@ -145,6 +154,8 @@ export function TopicPublishForm({ topic, componentId, client }: TopicPublishFor
                 return 'std_msgs/msg/String';
             }
         }
+        // Warning: falling back to String type - message structure may not match
+        console.warn(`Could not determine message type for topic ${topic.topic}, defaulting to std_msgs/msg/String`);
         return 'std_msgs/msg/String';
     };
 

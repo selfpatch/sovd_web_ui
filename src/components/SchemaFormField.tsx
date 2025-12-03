@@ -1,7 +1,7 @@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { SchemaFieldType, TopicSchema } from '@/lib/types';
 
 interface SchemaFormFieldProps {
@@ -72,6 +72,77 @@ function getDefaultValue(schema: SchemaFieldType): unknown {
         return false;
     }
     return '';
+}
+
+/**
+ * Numeric input field with better UX for typing negative numbers
+ */
+interface NumericFieldProps {
+    name: string;
+    schemaType: string;
+    value: unknown;
+    onChange: (value: number) => void;
+    indent: number;
+}
+
+function NumericField({ name, schemaType, value, onChange, indent }: NumericFieldProps) {
+    const isInteger = !schemaType.includes('float') && schemaType !== 'double';
+    const isUnsigned = schemaType.startsWith('uint') || schemaType === 'byte';
+
+    // Track raw input for better UX (allow typing "-" without immediate reset)
+    const [rawInput, setRawInput] = useState<string>(
+        value === undefined || value === null ? '0' : String(value)
+    );
+
+    // Sync rawInput when value prop changes externally (e.g., parent resets form)
+    useEffect(() => {
+        const expectedRaw = value === undefined || value === null ? '0' : String(value);
+        // Only update if not in intermediate typing state
+        if (rawInput !== '-' && rawInput !== '' && rawInput !== expectedRaw) {
+            setRawInput(expectedRaw);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [value]);
+
+    return (
+        <div style={{ marginLeft: indent }} className="flex items-center gap-3">
+            <label className="text-sm font-medium min-w-[120px]">{name}</label>
+            <Input
+                type="text"
+                inputMode="decimal"
+                value={rawInput}
+                onChange={(e) => {
+                    const newRaw = e.target.value;
+                    setRawInput(newRaw);
+
+                    // Allow intermediate states while typing
+                    if (newRaw === '' || newRaw === '-' || newRaw === '.') {
+                        return; // Don't update parent yet
+                    }
+
+                    let val = isInteger ? parseInt(newRaw, 10) : parseFloat(newRaw);
+                    if (isNaN(val)) return; // Invalid, don't update
+                    if (isUnsigned && val < 0) val = 0;
+                    onChange(val);
+                }}
+                onBlur={() => {
+                    // On blur, commit final value
+                    let val: number;
+                    if (rawInput === '' || rawInput === '-' || rawInput === '.') {
+                        val = 0;
+                    } else {
+                        val = isInteger ? parseInt(rawInput, 10) : parseFloat(rawInput);
+                        if (isNaN(val)) val = 0;
+                        if (isUnsigned && val < 0) val = 0;
+                    }
+                    setRawInput(String(val));
+                    onChange(val);
+                }}
+                className="h-8 w-40 font-mono text-xs"
+            />
+            <span className="text-xs text-muted-foreground">{schemaType}</span>
+        </div>
+    );
 }
 
 /**
@@ -214,33 +285,14 @@ export function SchemaFormField({ name, schema, value, onChange, depth = 0 }: Sc
 
         // Numeric field
         if (isNumericType(schema.type)) {
-            const isInteger = !schema.type.includes('float') && schema.type !== 'double';
-            const isUnsigned = schema.type.startsWith('uint') || schema.type === 'byte';
-
             return (
-                <div style={{ marginLeft: indent }} className="flex items-center gap-3">
-                    <label className="text-sm font-medium min-w-[120px]">{name}</label>
-                    <Input
-                        type="number"
-                        step={isInteger ? 1 : 0.001}
-                        min={isUnsigned ? 0 : undefined}
-                        value={value as number ?? 0}
-                        onChange={(e) => {
-                            const rawValue = e.target.value;
-                            // Allow empty input or just a minus sign while typing
-                            if (rawValue === '' || rawValue === '-') {
-                                onChange(0);
-                                return;
-                            }
-                            let val = isInteger ? parseInt(rawValue, 10) : parseFloat(rawValue);
-                            if (isNaN(val)) val = 0;
-                            if (isUnsigned && val < 0) val = 0;
-                            onChange(val);
-                        }}
-                        className="h-8 w-40 font-mono text-xs"
-                    />
-                    <span className="text-xs text-muted-foreground">{schema.type}</span>
-                </div>
+                <NumericField
+                    name={name}
+                    schemaType={schema.type}
+                    value={value}
+                    onChange={onChange}
+                    indent={indent}
+                />
             );
         }
 

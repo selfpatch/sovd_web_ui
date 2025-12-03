@@ -26,6 +26,8 @@ export interface SovdEntityDetails extends SovdEntity {
   topics?: ComponentTopic[];
   /** Error message if fetching details failed */
   error?: string;
+  /** ROS message type (preserved separately when entity type is 'topic') */
+  rosType?: string;
   /** Additional properties vary by entity type */
   [key: string]: unknown;
 }
@@ -55,7 +57,10 @@ export interface EntityTreeNode extends SovdEntity {
   isLoading?: boolean;
   isExpanded?: boolean;
   path: string;
-  /** Optional raw data associated with the entity (e.g. ComponentTopic) */
+  /**
+   * Raw data associated with the entity.
+   * For topic nodes, contains ComponentTopic data; otherwise undefined.
+   */
   data?: unknown;
 }
 

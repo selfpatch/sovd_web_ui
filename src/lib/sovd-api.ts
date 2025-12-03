@@ -2,6 +2,7 @@ import type { SovdEntity, SovdEntityDetails, ComponentTopic, ComponentTopicPubli
 
 /**
  * Timeout wrapper for fetch requests
+ * Default timeout increased to 10s to handle slower connections and large topic data responses
  */
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 10000): Promise<Response> {
   const controller = new AbortController();
@@ -152,7 +153,7 @@ export class SovdApiClient {
         // No, keep full name but fix href.
 
         return {
-          id: topic.topic,
+          id: cleanTopicName,
           name: topic.topic,
           type: 'topic',
           href: `/${parts[0]}/${parts[1]}/${cleanTopicName}`,
@@ -208,7 +209,8 @@ export class SovdApiClient {
         topics: [topic],
         // Add specific topic data to the root of the entity details for easier access
         ...topic,
-        // IMPORTANT: Set type AFTER spreading topic to ensure it's not overwritten by topic.type (which is the ROS message type)
+        // Preserve ROS message type in rosType, set entity type separately
+        rosType: topic.type,
         type: 'topic',
       };
     }

@@ -214,8 +214,9 @@ export const useAppStore = create<AppState>()(
         }
 
         // Check if we already have this data in the tree
+        // Only skip if children are already loaded and non-empty
         const node = findNode(rootEntities, path);
-        if (node && node.children && node.children.length > 0) {
+        if (node && Array.isArray(node.children) && node.children.length > 0) {
           // Already loaded
           return;
         }
@@ -277,7 +278,8 @@ export const useAppStore = create<AppState>()(
               href: node.href,
               topics: [topicData],
               ...topicData,
-              // IMPORTANT: Set type AFTER spreading topicData to ensure it's not overwritten by topicData.type
+              // Preserve ROS message type in rosType, set entity type separately
+              rosType: topicData.type,
               type: 'topic',
             }
           });
@@ -401,7 +403,8 @@ export const useAppStore = create<AppState>()(
             href: topicPath,
             topics: [topicData],
             ...topicData,
-            // IMPORTANT: Set type AFTER spreading topicData to ensure it's 'topic'
+            // Preserve ROS message type in rosType, set entity type separately
+            rosType: topicData.type,
             type: 'topic',
           }
         });
