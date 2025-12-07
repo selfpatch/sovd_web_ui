@@ -1,9 +1,10 @@
-import type { SovdEntity, SovdEntityDetails, ComponentTopic, ComponentTopicPublishRequest } from './types';
+import type { SovdEntity, SovdEntityDetails, ComponentTopic, ComponentTopicPublishRequest, ComponentTopicsInfo } from './types';
 
 /**
- * Timeout wrapper for fetch requests
+ * Timeout wrapper for fetch requests.
+ * Default timeout is 10 seconds to accommodate slower connections and large topic data responses.
  */
-async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 5000): Promise<Response> {
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 10000): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
@@ -44,6 +45,27 @@ function normalizeUrl(url: string): string {
 }
 
 /**
+ * Normalize base endpoint path
+ * Accepts: "api/v1", "/api/v1", "/api/v1/", "api/v1/"
+ * Returns: "api/v1" (no leading or trailing slashes)
+ */
+function normalizeBasePath(path: string): string {
+  let normalized = path.trim();
+
+  // Remove leading slashes
+  while (normalized.startsWith('/')) {
+    normalized = normalized.slice(1);
+  }
+
+  // Remove trailing slashes
+  while (normalized.endsWith('/')) {
+    normalized = normalized.slice(0, -1);
+  }
+
+  return normalized;
+}
+
+/**
  * SOVD API Client for discovery endpoints
  */
 export class SovdApiClient {
@@ -52,8 +74,8 @@ export class SovdApiClient {
 
   constructor(serverUrl: string, baseEndpoint: string = '') {
     this.baseUrl = normalizeUrl(serverUrl);
-    // Normalize base endpoint: remove leading/trailing slashes
-    this.baseEndpoint = baseEndpoint.replace(/^\/+|\/+$/g, '');
+    // Normalize base endpoint using helper function
+    this.baseEndpoint = normalizeBasePath(baseEndpoint);
   }
 
   /**
@@ -107,28 +129,66 @@ export class SovdApiClient {
 
     // Area level -> fetch components
     // Path format: /area_id
-    const areaId = path.replace(/^\//, '');
-    // Check if it's a nested path (component inside area)
-    if (areaId.includes('/')) {
-      // We don't support children of components in this simple mapping yet
-      return [];
+    const parts = path.replace(/^\//, '').split('/');
+
+    // Level 1: /area -> fetch components
+    if (parts.length === 1) {
+      const areaId = parts[0];
+      const response = await fetchWithTimeout(this.getUrl(`areas/${areaId}/components`), {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      });
+
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const components = await response.json();
+
+      return components.map((comp: { id: string; fqn?: string; topics?: ComponentTopicsInfo }) => {
+        // Check if component has any topics (publishes or subscribes)
+        const hasTopics = comp.topics &&
+          ((comp.topics.publishes?.length ?? 0) > 0 || (comp.topics.subscribes?.length ?? 0) > 0);
+
+        return {
+          id: comp.id,
+          name: comp.fqn || comp.id,
+          type: 'component',
+          href: `/${areaId}/${comp.id}`,
+          hasChildren: hasTopics,
+          topicsInfo: comp.topics
+        };
+      });
     }
 
-    const response = await fetchWithTimeout(this.getUrl(`areas/${areaId}/components`), {
-      method: 'GET',
-      headers: { 'Accept': 'application/json' },
-    });
+    // Level 2: /area/component -> fetch full topic data with QoS, publishers, subscribers
+    // This fetches actual topic samples which include rich metadata
+    if (parts.length === 2) {
+      const componentId = parts[1];
+      const response = await fetchWithTimeout(this.getUrl(`components/${componentId}/data`), {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      });
 
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const components = await response.json();
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const topics = await response.json() as ComponentTopic[];
 
-    return components.map((comp: { id: string }) => ({
-      id: comp.id,
-      name: comp.id,
-      type: 'component',
-      href: `/components/${comp.id}`,
-      hasChildren: false // Components are leaves in this view
-    }));
+      // Return entities with FULL ComponentTopic data preserved
+      // This includes: type, type_info, publishers, subscribers, QoS, etc.
+      return topics.map(topic => {
+        const cleanTopicName = topic.topic.startsWith('/') ? topic.topic.slice(1) : topic.topic;
+        const encodedTopicName = encodeURIComponent(cleanTopicName);
+
+        return {
+          id: encodedTopicName,
+          name: topic.topic,
+          type: 'topic',
+          href: `/${parts[0]}/${parts[1]}/${encodedTopicName}`,
+          hasChildren: false,
+          // IMPORTANT: Store full ComponentTopic for rich topic view
+          data: topic
+        };
+      });
+    }
+
+    return [];
   }
 
   /**
@@ -138,6 +198,44 @@ export class SovdApiClient {
   async getEntityDetails(path: string): Promise<SovdEntityDetails> {
     // Path comes from the tree, e.g. "/area_id/component_id"
     const parts = path.split('/').filter(p => p);
+
+    // Level 3: /area/component/topic -> fetch topic details
+    if (parts.length === 3) {
+      const componentId = parts[1];
+      const encodedTopicName = parts[2];
+
+      // Decode topic name using standard percent-decoding
+      // e.g., 'powertrain%2Fengine%2Ftemp' -> 'powertrain/engine/temp'
+      const decodedTopicName = decodeURIComponent(encodedTopicName);
+
+      // Use the dedicated single-topic endpoint
+      // The REST API expects percent-encoded topic name in the URL
+      const response = await fetchWithTimeout(
+        this.getUrl(`components/${componentId}/data/${encodedTopicName}`),
+        {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' },
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error(`Topic ${decodedTopicName} not found for component ${componentId}`);
+        }
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const topic = await response.json() as ComponentTopic;
+
+      return {
+        id: encodedTopicName,
+        name: topic.topic || `/${decodedTopicName}`,
+        href: path,
+        topicData: topic,
+        rosType: topic.type,
+        type: 'topic',
+      };
+    }
 
     if (parts.length === 2) {
       const componentId = parts[1];
@@ -149,13 +247,21 @@ export class SovdApiClient {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const topicsData = await response.json() as ComponentTopic[];
 
-      // Return entity details with topics array
+      // Build topicsInfo from fetched data for navigation
+      // AND keep full topics array for detailed view (QoS, publishers, etc.)
+      const topicNames = topicsData.map(t => t.topic);
       return {
         id: componentId,
         name: componentId,
         type: 'component',
-        href: path,
+        href: `/${parts[0]}/${parts[1]}`,
+        // Full topic data with QoS, publishers, subscribers
         topics: topicsData,
+        // Simple lists for navigation
+        topicsInfo: {
+          publishes: topicNames,
+          subscribes: [],
+        },
       };
     }
 
@@ -201,6 +307,27 @@ export class SovdApiClient {
       const errorData = (await response.json().catch(() => ({}))) as { error?: string; message?: string };
       throw new Error(errorData.error || errorData.message || `Server error (HTTP ${response.status})`);
     }
+  }
+
+  /**
+   * Force a server-side refresh of the entity tree and topic map
+   * This triggers the backend to rebuild its cache immediately
+   * @returns Refresh stats (duration_ms, areas_count, components_count)
+   */
+  async refreshTree(): Promise<{ duration_ms: number; areas_count: number; components_count: number }> {
+    const response = await fetchWithTimeout(this.getUrl('refresh'), {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+      },
+    }, 30000); // 30 second timeout for full refresh
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => ({}))) as { error?: string; message?: string };
+      throw new Error(errorData.error || errorData.message || `Server error (HTTP ${response.status})`);
+    }
+
+    return await response.json();
   }
 
 

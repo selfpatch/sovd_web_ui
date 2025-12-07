@@ -1,11 +1,9 @@
-import { useState } from 'react';
 import { useShallow } from 'zustand/shallow';
-import { toast } from 'react-toastify';
-import { Copy, Loader2, Send, Radio, ChevronDown, ChevronRight } from 'lucide-react';
+import { Copy, Loader2, Radio, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { EmptyState } from '@/components/EmptyState';
+import { TopicDiagnosticsPanel } from '@/components/TopicDiagnosticsPanel';
 import { useAppStore, type AppState } from '@/lib/store';
 import type { ComponentTopic } from '@/lib/types';
 
@@ -18,89 +16,23 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
         selectedPath,
         selectedEntity,
         isLoadingDetails,
+        isRefreshing,
         isConnected,
         client,
+        selectEntity,
+        refreshSelectedEntity,
     } = useAppStore(
         useShallow((state: AppState) => ({
             selectedPath: state.selectedPath,
             selectedEntity: state.selectedEntity,
             isLoadingDetails: state.isLoadingDetails,
+            isRefreshing: state.isRefreshing,
             isConnected: state.isConnected,
             client: state.client,
+            selectEntity: state.selectEntity,
+            refreshSelectedEntity: state.refreshSelectedEntity,
         }))
     );
-
-    const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
-    const [publishingTopics, setPublishingTopics] = useState<Set<string>>(new Set());
-    const [topicInputs, setTopicInputs] = useState<Record<string, string>>({});
-
-    const toggleTopicExpanded = (topicPath: string) => {
-        setExpandedTopics(prev => {
-            const next = new Set(prev);
-            if (next.has(topicPath)) {
-                next.delete(topicPath);
-            } else {
-                next.add(topicPath);
-            }
-            return next;
-        });
-    };
-
-    const handlePublishToTopic = async (topic: ComponentTopic, topicName: string) => {
-        if (!client || !selectedEntity) return;
-
-        const inputData = topicInputs[topic.topic] || '';
-        if (!inputData.trim()) {
-            toast.error('Please enter message data');
-            return;
-        }
-
-        // Parse JSON before setting publishing state to avoid stuck state on parse error
-        let data: unknown;
-        try {
-            data = JSON.parse(inputData);
-        } catch {
-            toast.error('Invalid JSON format. Please check your message data.');
-            return;
-        }
-
-        setPublishingTopics(prev => new Set(prev).add(topic.topic));
-
-        try {
-            const messageType = inferMessageType(topic.data);
-
-            await client.publishToComponentTopic(selectedEntity.id, topicName, {
-                type: messageType,
-                data,
-            });
-
-            toast.success(`Published to ${topic.topic}`);
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'Failed to publish';
-            toast.error(`Publish failed: ${message}`);
-        } finally {
-            setPublishingTopics(prev => {
-                const next = new Set(prev);
-                next.delete(topic.topic);
-                return next;
-            });
-        }
-    };
-
-    // Helper to infer message type from data structure
-    const inferMessageType = (data: unknown): string => {
-        // This is a simplified heuristic - in production you'd want to query type info
-        if (data && typeof data === 'object') {
-            const keys = Object.keys(data as object);
-            if (keys.includes('linear') && keys.includes('angular')) {
-                return 'geometry_msgs/msg/Twist';
-            }
-            if (keys.includes('data') && keys.length === 1) {
-                return 'std_msgs/msg/String';
-            }
-        }
-        return 'std_msgs/msg/String'; // Default fallback
-    };
 
     const handleCopyEntity = async () => {
         if (selectedEntity) {
@@ -137,7 +69,14 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
 
     // Entity detail view
     if (selectedEntity) {
-        const hasTopics = selectedEntity.type === 'component' && selectedEntity.topics && selectedEntity.topics.length > 0;
+        const isTopic = selectedEntity.type === 'topic';
+        const isComponent = selectedEntity.type === 'component';
+        const hasTopicData = isTopic && selectedEntity.topicData;
+        // Prefer full topics array (with QoS, type info) over topicsInfo (names only)
+        const hasTopicsArray = isComponent && selectedEntity.topics && selectedEntity.topics.length > 0;
+        const hasTopicsInfo = isComponent && !hasTopicsArray && selectedEntity.topicsInfo &&
+            ((selectedEntity.topicsInfo.publishes?.length ?? 0) > 0 ||
+                (selectedEntity.topicsInfo.subscribes?.length ?? 0) > 0);
         const hasError = !!selectedEntity.error;
 
         return (
@@ -171,113 +110,144 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
                                 </div>
                             </CardContent>
                         </Card>
-                    ) : hasTopics ? (
+                    ) : hasTopicData ? (
+                        // Single Topic View - use TopicDiagnosticsPanel
+                        (() => {
+                            const topic = selectedEntity.topicData!;
+                            // Extract component ID from path /area/component/topic
+                            const componentId = selectedPath.split('/')[2];
+
+                            return (
+                                <TopicDiagnosticsPanel
+                                    key={topic.timestamp}
+                                    topic={topic}
+                                    componentId={componentId}
+                                    client={client}
+                                    isRefreshing={isRefreshing}
+                                    onRefresh={refreshSelectedEntity}
+                                />
+                            );
+                        })()
+                    ) : hasTopicsArray ? (
+                        // Component view with full topics array (type, QoS, publishers info)
                         <div className="space-y-6">
-                            {/* Topics List */}
-                            {selectedEntity.topics!.map((topic: ComponentTopic) => {
-                                const topicName = topic.topic.split('/').pop() || topic.topic;
-                                const isExpanded = expandedTopics.has(topic.topic);
-                                const isPublishing = publishingTopics.has(topic.topic);
-                                const hasNoData = topic.data === null || topic.data === undefined;
+                            {/* Topics List - Rich View with Type and QoS info */}
+                            <div className="grid gap-4 md:grid-cols-2">
+                                {(selectedEntity.topics as ComponentTopic[]).map((topic) => {
+                                    const cleanName = topic.topic.startsWith('/') ? topic.topic.slice(1) : topic.topic;
+                                    const encodedName = encodeURIComponent(cleanName);
+                                    const topicPath = `${selectedPath}/${encodedName}`;
 
-                                return (
-                                    <Card key={topic.topic} className={hasNoData ? 'opacity-60' : ''}>
-                                        <CardHeader>
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-3 flex-1">
-                                                    <Radio className={`w-5 h-5 shrink-0 ${hasNoData ? 'text-muted-foreground' : 'text-primary'}`} />
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex items-center gap-2">
-                                                            <CardTitle className="text-base truncate">{topic.topic}</CardTitle>
-                                                            {hasNoData && (
-                                                                <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground border">
-                                                                    No Data
-                                                                </span>
-                                                            )}
+                                    return (
+                                        <Card
+                                            key={topic.topic}
+                                            className="hover:bg-accent/50 transition-colors cursor-pointer group"
+                                            onClick={() => selectEntity(topicPath)}
+                                        >
+                                            <CardHeader className="p-4">
+                                                <div className="flex items-center gap-3">
+                                                    <Radio className="w-4 h-4 text-muted-foreground" />
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="font-medium truncate text-sm">{topic.topic}</div>
+                                                        <div className="text-xs text-muted-foreground truncate">
+                                                            {topic.type || 'Unknown Type'}
                                                         </div>
-                                                        <CardDescription className="text-xs">
-                                                            {hasNoData
-                                                                ? 'No messages received (topic may be inactive)'
-                                                                : `Last update: ${new Date(topic.timestamp / 1000000).toLocaleString()}`
-                                                            }
-                                                        </CardDescription>
                                                     </div>
+                                                    <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                                                 </div>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() => toggleTopicExpanded(topic.topic)}
-                                                >
-                                                    {isExpanded ? (
-                                                        <ChevronDown className="w-4 h-4" />
-                                                    ) : (
-                                                        <ChevronRight className="w-4 h-4" />
-                                                    )}
-                                                </Button>
-                                            </div>
-                                        </CardHeader>
-                                        {isExpanded && (
-                                            <CardContent className="space-y-4">
-                                                {/* Latest Data */}
-                                                <div>
-                                                    <div className="text-sm font-medium mb-2">Latest Message</div>
-                                                    {hasNoData ? (
-                                                        <div className="p-3 rounded-md bg-muted text-muted-foreground text-sm">
-                                                            No data available - topic exists but is not publishing messages
-                                                        </div>
-                                                    ) : (
-                                                        <pre className="p-3 rounded-md bg-muted text-xs overflow-x-auto">
-                                                            <code>{JSON.stringify(topic.data, null, 2)}</code>
-                                                        </pre>
-                                                    )}
-                                                </div>
-
-                                                {/* Publish Form - only show if we have data to infer type */}
-                                                {!hasNoData && (
-                                                    <div className="border-t pt-4">
-                                                        <div className="text-sm font-medium mb-2">Publish Message</div>
-                                                        <Textarea
-                                                            value={topicInputs[topic.topic] || JSON.stringify(topic.data, null, 2)}
-                                                            onChange={(e) => setTopicInputs(prev => ({
-                                                                ...prev,
-                                                                [topic.topic]: e.target.value
-                                                            }))}
-                                                            placeholder="Enter JSON message data..."
-                                                            className="font-mono text-xs min-h-[120px] mb-3"
-                                                        />
-
-                                                        <Button
-                                                            onClick={() => handlePublishToTopic(topic, topicName)}
-                                                            disabled={isPublishing}
-                                                            size="sm"
-                                                            className="w-full"
-                                                        >
-                                                            {isPublishing ? (
-                                                                <>
-                                                                    <Loader2 className="w-3 h-3 mr-2 animate-spin" />
-                                                                    Publishing...
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <Send className="w-3 h-3 mr-2" />
-                                                                    Publish
-                                                                </>
-                                                            )}
-                                                        </Button>
-                                                    </div>
-                                                )}
-                                            </CardContent>
-                                        )}
-                                    </Card>
-                                );
-                            })}
+                                            </CardHeader>
+                                        </Card>
+                                    );
+                                })}
+                            </div>
                         </div>
+                    ) : hasTopicsInfo ? (
+                        // Component view with publishes/subscribes arrays
+                        (() => {
+                            // Safe to access - hasTopicsInfo already verified this exists
+                            const topicsInfo = selectedEntity.topicsInfo as NonNullable<typeof selectedEntity.topicsInfo>;
+                            return (
+                                <div className="space-y-6">
+                                    {/* Publishes Section */}
+                                    {topicsInfo.publishes.length > 0 && (
+                                        <Card>
+                                            <CardHeader className="pb-2">
+                                                <div className="flex items-center gap-2">
+                                                    <ArrowUp className="w-4 h-4 text-green-500" />
+                                                    <CardTitle className="text-base">Publishes</CardTitle>
+                                                    <span className="text-xs text-muted-foreground">
+                                                        ({topicsInfo.publishes.length} topics)
+                                                    </span>
+                                                </div>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <div className="space-y-1">
+                                                    {topicsInfo.publishes.map((topic: string) => {
+                                                        const cleanName = topic.startsWith('/') ? topic.slice(1) : topic;
+                                                        const encodedName = encodeURIComponent(cleanName);
+                                                        const topicPath = `${selectedPath}/${encodedName}`;
+
+                                                        return (
+                                                            <div
+                                                                key={topic}
+                                                                className="flex items-center gap-2 p-2 rounded-md hover:bg-accent/50 cursor-pointer group"
+                                                                onClick={() => selectEntity(topicPath)}
+                                                            >
+                                                                <Radio className="w-3 h-3 text-green-500" />
+                                                                <span className="text-sm font-mono truncate flex-1">{topic}</span>
+                                                                <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100" />
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    )}
+
+                                    {/* Subscribes Section */}
+                                    {topicsInfo.subscribes.length > 0 && (
+                                        <Card>
+                                            <CardHeader className="pb-2">
+                                                <div className="flex items-center gap-2">
+                                                    <ArrowDown className="w-4 h-4 text-blue-500" />
+                                                    <CardTitle className="text-base">Subscribes</CardTitle>
+                                                    <span className="text-xs text-muted-foreground">
+                                                        ({topicsInfo.subscribes.length} topics)
+                                                    </span>
+                                                </div>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <div className="space-y-1">
+                                                    {topicsInfo.subscribes.map((topic: string) => {
+                                                        const cleanName = topic.startsWith('/') ? topic.slice(1) : topic;
+                                                        const encodedName = encodeURIComponent(cleanName);
+                                                        const topicPath = `${selectedPath}/${encodedName}`;
+
+                                                        return (
+                                                            <div
+                                                                key={topic}
+                                                                className="flex items-center gap-2 p-2 rounded-md hover:bg-accent/50 cursor-pointer group"
+                                                                onClick={() => selectEntity(topicPath)}
+                                                            >
+                                                                <Radio className="w-3 h-3 text-blue-500" />
+                                                                <span className="text-sm font-mono truncate flex-1">{topic}</span>
+                                                                <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100" />
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    )}
+                                </div>
+                            );
+                        })()
                     ) : (
                         <Card>
                             <CardContent className="pt-6">
-                                <pre className="p-4 rounded-lg bg-muted text-sm overflow-x-auto">
-                                    <code>{JSON.stringify(selectedEntity, null, 2)}</code>
-                                </pre>
+                                <div className="text-center text-muted-foreground">
+                                    No detailed information available for this entity.
+                                </div>
                             </CardContent>
                         </Card>
                     )}

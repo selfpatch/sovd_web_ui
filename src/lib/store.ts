@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { toast } from 'react-toastify';
-import type { SovdEntity, SovdEntityDetails, EntityTreeNode } from './types';
+import type { SovdEntity, SovdEntityDetails, EntityTreeNode, ComponentTopic, TopicNodeData } from './types';
 import { createSovdClient, type SovdApiClient } from './sovd-api';
 
 const STORAGE_KEY = 'sovd_web_ui_server_url';
@@ -24,6 +24,7 @@ export interface AppState {
   selectedPath: string | null;
   selectedEntity: SovdEntityDetails | null;
   isLoadingDetails: boolean;
+  isRefreshing: boolean;
 
   // Actions
   connect: (url: string, baseEndpoint?: string) => Promise<boolean>;
@@ -32,6 +33,7 @@ export interface AppState {
   loadChildren: (path: string) => Promise<void>;
   toggleExpanded: (path: string) => void;
   selectEntity: (path: string) => Promise<void>;
+  refreshSelectedEntity: () => Promise<void>;
   clearSelection: () => void;
 }
 
@@ -40,10 +42,49 @@ export interface AppState {
  */
 function toTreeNode(entity: SovdEntity, parentPath: string = ''): EntityTreeNode {
   const path = parentPath ? `${parentPath}/${entity.id}` : `/${entity.id}`;
+
+  // If this is a component with topicsInfo, pre-populate children
+  let children: EntityTreeNode[] | undefined;
+  if (entity.type === 'component' && entity.topicsInfo) {
+    const allTopics = new Set<string>();
+
+    // Collect unique topics from publishes and subscribes
+    entity.topicsInfo.publishes?.forEach(t => allTopics.add(t));
+    entity.topicsInfo.subscribes?.forEach(t => allTopics.add(t));
+
+    if (allTopics.size > 0) {
+      children = Array.from(allTopics).sort().map(topicName => {
+        const cleanName = topicName.startsWith('/') ? topicName.slice(1) : topicName;
+        // Use percent-encoding for topic names in URLs
+        // e.g., 'powertrain/engine/temp' -> 'powertrain%2Fengine%2Ftemp'
+        const encodedName = encodeURIComponent(cleanName);
+        const isPublisher = entity.topicsInfo?.publishes?.includes(topicName) ?? false;
+        const isSubscriber = entity.topicsInfo?.subscribes?.includes(topicName) ?? false;
+
+        return {
+          id: encodedName,
+          name: topicName,
+          type: 'topic',
+          href: `${path}/${encodedName}`,
+          path: `${path}/${encodedName}`,
+          hasChildren: false,
+          isLoading: false,
+          isExpanded: false,
+          // Store topic direction info
+          data: {
+            topic: topicName,
+            isPublisher,
+            isSubscriber
+          }
+        };
+      });
+    }
+  }
+
   return {
     ...entity,
     path,
-    children: undefined,
+    children,
     isLoading: false,
     isExpanded: false,
   };
@@ -71,6 +112,22 @@ function updateNodeInTree(
   });
 }
 
+/**
+ * Find a node in the tree by path
+ */
+function findNode(nodes: EntityTreeNode[], path: string): EntityTreeNode | null {
+  for (const node of nodes) {
+    if (node.path === path) {
+      return node;
+    }
+    if (node.children) {
+      const found = findNode(node.children, path);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -90,6 +147,7 @@ export const useAppStore = create<AppState>()(
       selectedPath: null,
       selectedEntity: null,
       isLoadingDetails: false,
+      isRefreshing: false,
 
       // Connect to SOVD server
       connect: async (url: string, baseEndpoint: string = '') => {
@@ -163,8 +221,31 @@ export const useAppStore = create<AppState>()(
 
       // Load children for a specific node
       loadChildren: async (path: string) => {
-        const { client, loadingPaths, rootEntities } = get();
+        const { client, loadingPaths, rootEntities, isLoadingDetails } = get();
         if (!client || loadingPaths.includes(path)) return;
+
+        // If currently loading details, wait for it instead of making duplicate request
+        if (isLoadingDetails) {
+          return;
+        }
+
+        // Check if we already have this data in the tree
+        const node = findNode(rootEntities, path);
+        if (node && Array.isArray(node.children) && node.children.length > 0) {
+          // Check if children have full data or just TopicNodeData
+          // TopicNodeData has isPublisher/isSubscriber but no 'type' field in data
+          // Full ComponentTopic has 'type' field (e.g., "sensor_msgs/msg/Temperature")
+          const firstChild = node.children[0];
+          const hasFullData = firstChild.data &&
+            typeof firstChild.data === 'object' &&
+            'type' in (firstChild.data as object);
+
+          if (hasFullData) {
+            // Already have full data, skip fetch
+            return;
+          }
+          // Have only TopicNodeData - need to fetch full data
+        }
 
         // Mark as loading
         set({ loadingPaths: [...loadingPaths, path] });
@@ -205,8 +286,125 @@ export const useAppStore = create<AppState>()(
 
       // Select an entity and load its details
       selectEntity: async (path: string) => {
-        const { client, selectedPath } = get();
+        const { client, selectedPath, rootEntities, expandedPaths } = get();
         if (!client || path === selectedPath) return;
+
+        // OPTIMIZATION: Check if tree already has this data
+        const node = findNode(rootEntities, path);
+
+        // Optimization for Topic - check if we have TopicNodeData or full ComponentTopic
+        if (node && node.type === 'topic' && node.data) {
+          const data = node.data as TopicNodeData | ComponentTopic;
+
+          // Check if it's TopicNodeData (from topicsInfo - only has isPublisher/isSubscriber)
+          // vs full ComponentTopic (from /components/{id}/data - has type, publishers, QoS etc)
+          const isTopicNodeData = 'isPublisher' in data && 'isSubscriber' in data && !('type' in data);
+
+          if (isTopicNodeData) {
+            // Preserve isPublisher/isSubscriber info from TopicNodeData
+            const { isPublisher, isSubscriber } = data as TopicNodeData;
+
+            // This is TopicNodeData - fetch actual topic details with full metadata
+            set({
+              selectedPath: path,
+              isLoadingDetails: true,
+              selectedEntity: null,
+            });
+
+            try {
+              const details = await client.getEntityDetails(path);
+
+              // Update tree node with full data MERGED with direction info
+              // This preserves isPublisher/isSubscriber for the tree icons
+              const updatedTree = updateNodeInTree(rootEntities, path, n => ({
+                ...n,
+                data: {
+                  ...details.topicData,
+                  isPublisher,
+                  isSubscriber,
+                }
+              }));
+              set({ rootEntities: updatedTree });
+
+              set({ selectedEntity: details, isLoadingDetails: false });
+            } catch (error) {
+              const message = error instanceof Error ? error.message : 'Unknown error';
+              toast.error(`Failed to load topic details: ${message}`);
+              set({
+                selectedEntity: {
+                  id: node.id,
+                  name: node.name,
+                  type: 'topic',
+                  href: node.href,
+                  error: 'Failed to load details'
+                },
+                isLoadingDetails: false
+              });
+            }
+            return;
+          }
+
+          // Full ComponentTopic data available (from expanded component children)
+          const topicData = data as ComponentTopic;
+          set({
+            selectedPath: path,
+            isLoadingDetails: false,
+            selectedEntity: {
+              id: node.id,
+              name: node.name,
+              href: node.href,
+              topicData,
+              rosType: topicData.type,
+              type: 'topic',
+            }
+          });
+          return;
+        }
+
+        // Optimization for Component - check if we have full ComponentTopic data in children
+        if (node && node.type === 'component') {
+          // Auto-expand component to show topics
+          const newExpandedPaths = expandedPaths.includes(path)
+            ? expandedPaths
+            : [...expandedPaths, path];
+
+          // Check if children have FULL ComponentTopic data (not just TopicNodeData)
+          const hasFullTopicData = node.children &&
+            node.children.length > 0 &&
+            node.children[0].data &&
+            typeof node.children[0].data === 'object' &&
+            'type' in (node.children[0].data as object);
+
+          if (hasFullTopicData) {
+            // Use full ComponentTopic data from tree cache
+            const fullTopics = node.children!
+              .filter(child => child.type === 'topic' && child.data)
+              .map(child => child.data as ComponentTopic);
+
+            set({
+              selectedPath: path,
+              expandedPaths: newExpandedPaths,
+              isLoadingDetails: false,
+              selectedEntity: {
+                id: node.id,
+                name: node.name,
+                type: node.type,
+                href: node.href,
+                // Full topic data with QoS, publishers, subscribers
+                topics: fullTopics,
+                // Simple lists for navigation
+                topicsInfo: {
+                  publishes: fullTopics.map(t => t.topic),
+                  subscribes: [],
+                }
+              }
+            });
+            return;
+          }
+
+          // Children only have TopicNodeData (from topicsInfo) - need to fetch full data from API
+          // Fall through to the API fetch below
+        }
 
         set({
           selectedPath: path,
@@ -216,6 +414,81 @@ export const useAppStore = create<AppState>()(
 
         try {
           const details = await client.getEntityDetails(path);
+
+          // SYNC: Update tree with fetched topics AND auto-expand the node
+          // Prefer full topics array (with QoS, publishers) over topicsInfo (names only)
+          if (details.topics && details.topics.length > 0) {
+            const children = details.topics.map(topic => {
+              const cleanName = topic.topic.startsWith('/') ? topic.topic.slice(1) : topic.topic;
+              const encodedName = encodeURIComponent(cleanName);
+              return {
+                id: encodedName,
+                name: topic.topic,
+                type: 'topic' as const,
+                href: `${path}/${encodedName}`,
+                hasChildren: false,
+                path: `${path}/${encodedName}`,
+                // Store FULL ComponentTopic data for rich view
+                data: topic
+              };
+            });
+
+            const updatedTree = updateNodeInTree(rootEntities, path, n => ({
+              ...n,
+              children,
+              isLoading: false
+            }));
+
+            // Auto-expand the node if it has topics
+            const newExpandedPaths = expandedPaths.includes(path)
+              ? expandedPaths
+              : [...expandedPaths, path];
+
+            set({
+              rootEntities: updatedTree,
+              expandedPaths: newExpandedPaths
+            });
+          } else if (details.topicsInfo) {
+            // Fallback to topicsInfo if topics array not available
+            const allTopics = new Set<string>();
+            details.topicsInfo.publishes?.forEach(t => allTopics.add(t));
+            details.topicsInfo.subscribes?.forEach(t => allTopics.add(t));
+
+            const children = Array.from(allTopics).sort().map(topicName => {
+              const cleanName = topicName.startsWith('/') ? topicName.slice(1) : topicName;
+              const encodedName = encodeURIComponent(cleanName);
+              return {
+                id: encodedName,
+                name: topicName,
+                type: 'topic' as const,
+                href: `${path}/${encodedName}`,
+                hasChildren: false,
+                path: `${path}/${encodedName}`,
+                data: {
+                  topic: topicName,
+                  isPublisher: details.topicsInfo?.publishes?.includes(topicName) ?? false,
+                  isSubscriber: details.topicsInfo?.subscribes?.includes(topicName) ?? false,
+                }
+              };
+            });
+
+            const updatedTree = updateNodeInTree(rootEntities, path, n => ({
+              ...n,
+              children,
+              isLoading: false
+            }));
+
+            // Auto-expand the node if it has topics
+            const newExpandedPaths = expandedPaths.includes(path)
+              ? expandedPaths
+              : [...expandedPaths, path];
+
+            set({
+              rootEntities: updatedTree,
+              expandedPaths: newExpandedPaths
+            });
+          }
+
           set({ selectedEntity: details, isLoadingDetails: false });
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Unknown error';
@@ -240,11 +513,28 @@ export const useAppStore = create<AppState>()(
               name: id,
               type: inferredType,
               href: path,
-              topics: [],
               error: 'Failed to load details'
             },
             isLoadingDetails: false
           });
+        }
+      },
+
+      // Refresh the currently selected entity (re-fetch from server)
+      refreshSelectedEntity: async () => {
+        const { selectedPath, client } = get();
+        if (!selectedPath || !client) {
+          return;
+        }
+
+        set({ isRefreshing: true });
+
+        try {
+          const details = await client.getEntityDetails(selectedPath);
+          set({ selectedEntity: details, isRefreshing: false });
+        } catch {
+          toast.error('Failed to refresh data');
+          set({ isRefreshing: false });
         }
       },
 
