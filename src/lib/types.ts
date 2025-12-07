@@ -123,6 +123,25 @@ export interface TopicNodeData {
 }
 
 /**
+ * Virtual folder data for component subfolders
+ */
+export interface VirtualFolderData {
+  /** Type of virtual folder: data, operations, or configurations */
+  folderType: 'data' | 'operations' | 'configurations';
+  /** Parent component ID */
+  componentId: string;
+  /** Topics info (for data folder) */
+  topicsInfo?: ComponentTopicsInfo;
+}
+
+/**
+ * Type guard for VirtualFolderData
+ */
+export function isVirtualFolderData(data: unknown): data is VirtualFolderData {
+  return !!data && typeof data === 'object' && 'folderType' in data && 'componentId' in data;
+}
+
+/**
  * Component topic data from GET /components/{id}/data
  */
 export interface ComponentTopic {
@@ -191,4 +210,238 @@ export interface ComponentTopicPublishRequest {
   data: unknown;
 }
 
+// =============================================================================
+// CONFIGURATIONS (ROS 2 Parameters)
+// =============================================================================
+
+/**
+ * Parameter type from ROS 2
+ */
+export type ParameterType = 'bool' | 'int' | 'double' | 'string' | 'byte_array' | 'bool_array' | 'int_array' | 'double_array' | 'string_array';
+
+/**
+ * Single parameter info from configurations endpoint
+ */
+export interface Parameter {
+  /** Parameter name */
+  name: string;
+  /** Current parameter value */
+  value: unknown;
+  /** Parameter type (bool, int, double, string, arrays) */
+  type: ParameterType;
+  /** Optional description of the parameter */
+  description?: string;
+  /** Whether the parameter is read-only */
+  read_only?: boolean;
+}
+
+/**
+ * Response from GET /components/{id}/configurations
+ */
+export interface ComponentConfigurations {
+  component_id: string;
+  node_name: string;
+  parameters: Parameter[];
+}
+
+/**
+ * Response from GET /components/{id}/configurations/{param}
+ */
+export interface ConfigurationDetail {
+  component_id: string;
+  parameter: Parameter;
+}
+
+/**
+ * Request body for PUT /components/{id}/configurations/{param}
+ */
+export interface SetConfigurationRequest {
+  value: unknown;
+}
+
+/**
+ * Response from PUT /components/{id}/configurations/{param}
+ */
+export interface SetConfigurationResponse {
+  status: 'success' | 'error';
+  component_id: string;
+  parameter: Parameter;
+  error?: string;
+}
+
+/**
+ * Response from DELETE /components/{id}/configurations/{param}
+ * Reset single parameter to default value
+ */
+export interface ResetConfigurationResponse {
+  name: string;
+  value: unknown;
+  type: ParameterType;
+  reset_to_default: boolean;
+}
+
+/**
+ * Response from DELETE /components/{id}/configurations
+ * Reset all parameters to default values
+ */
+export interface ResetAllConfigurationsResponse {
+  node_name: string;
+  reset_count: number;
+  failed_count: number;
+  failed_parameters?: string[];
+}
+
+// =============================================================================
+// OPERATIONS (ROS 2 Services & Actions)
+// =============================================================================
+
+/**
+ * Operation kind - service is sync, action is async
+ */
+export type OperationKind = 'service' | 'action';
+
+/**
+ * Service schema with request and response types
+ */
+export interface ServiceSchema {
+  request: TopicSchema;
+  response: TopicSchema;
+}
+
+/**
+ * Action schema with goal, result, and feedback types
+ */
+export interface ActionSchema {
+  goal: TopicSchema;
+  result: TopicSchema;
+  feedback: TopicSchema;
+}
+
+/**
+ * Type information for an operation (service or action)
+ */
+export interface OperationTypeInfo {
+  /** JSON schema describing request/response or goal/result/feedback types */
+  schema: ServiceSchema | ActionSchema;
+  /** Default values for the request/goal as YAML string */
+  default_value?: string;
+}
+
+/**
+ * Operation info from component discovery
+ */
+export interface Operation {
+  /** Operation name (e.g., "calibrate") */
+  name: string;
+  /** Full ROS path (e.g., "/powertrain/engine/calibrate") */
+  path: string;
+  /** ROS interface type (e.g., "std_srvs/srv/Trigger") */
+  type: string;
+  /** Whether it's a service or action */
+  kind: OperationKind;
+  /** Type information including schema for request/response */
+  type_info?: OperationTypeInfo;
+}
+
+/**
+ * Request body for POST /components/{id}/operations/{op}
+ */
+export interface InvokeOperationRequest {
+  /** Optional type override (auto-detected if not provided) */
+  type?: string;
+  /** Service request data (for services) */
+  request?: unknown;
+  /** Action goal data (for actions) */
+  goal?: unknown;
+}
+
+/**
+ * Response from POST /components/{id}/operations/{op} for services
+ */
+export interface ServiceOperationResponse {
+  status: 'success' | 'error';
+  kind: 'service';
+  component_id: string;
+  operation: string;
+  response: unknown;
+  error?: string;
+}
+
+/**
+ * Response from POST /components/{id}/operations/{op} for actions
+ */
+export interface ActionOperationResponse {
+  status: 'success' | 'error';
+  kind: 'action';
+  component_id: string;
+  operation: string;
+  goal_id: string;
+  goal_status: 'accepted' | 'rejected';
+  error?: string;
+}
+
+/**
+ * Union type for operation response
+ */
+export type OperationResponse = ServiceOperationResponse | ActionOperationResponse;
+
+/**
+ * Action goal status values
+ */
+export type ActionGoalStatusValue = 'accepted' | 'executing' | 'canceling' | 'succeeded' | 'canceled' | 'aborted';
+
+/**
+ * Response from GET /components/{id}/operations/{op}/status
+ */
+export interface ActionGoalStatus {
+  goal_id: string;
+  status: ActionGoalStatusValue;
+  action_path: string;
+  action_type: string;
+  last_feedback?: unknown;
+}
+
+/**
+ * Response from GET /components/{id}/operations/{op}/status?all=true
+ */
+export interface AllActionGoalsStatus {
+  action_path: string;
+  goals: ActionGoalStatus[];
+  count: number;
+}
+
+/**
+ * Response from GET /components/{id}/operations/{op}/result
+ */
+export interface ActionGoalResult {
+  goal_id: string;
+  status: ActionGoalStatusValue;
+  result: unknown;
+}
+
+/**
+ * Response from DELETE /components/{id}/operations/{op}
+ */
+export interface ActionCancelResponse {
+  status: 'canceling' | 'error';
+  goal_id: string;
+  message: string;
+}
+
+// =============================================================================
+// COMPONENT EXTENDED (with operations list from discovery)
+// =============================================================================
+
+/**
+ * Extended component info including operations
+ */
+export interface ComponentWithOperations {
+  id: string;
+  namespace: string;
+  fqn: string;
+  type: string;
+  area: string;
+  /** List of available operations (services + actions) */
+  operations?: Operation[];
+}
 

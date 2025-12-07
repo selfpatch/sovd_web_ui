@@ -1,4 +1,23 @@
-import type { SovdEntity, SovdEntityDetails, ComponentTopic, ComponentTopicPublishRequest, ComponentTopicsInfo } from './types';
+import type {
+  SovdEntity,
+  SovdEntityDetails,
+  ComponentTopic,
+  ComponentTopicPublishRequest,
+  ComponentTopicsInfo,
+  ComponentConfigurations,
+  ConfigurationDetail,
+  SetConfigurationRequest,
+  SetConfigurationResponse,
+  ResetConfigurationResponse,
+  ResetAllConfigurationsResponse,
+  Operation,
+  InvokeOperationRequest,
+  OperationResponse,
+  ActionGoalStatus,
+  AllActionGoalsStatus,
+  ActionGoalResult,
+  ActionCancelResponse,
+} from './types';
 
 /**
  * Timeout wrapper for fetch requests.
@@ -199,7 +218,43 @@ export class SovdApiClient {
     // Path comes from the tree, e.g. "/area_id/component_id"
     const parts = path.split('/').filter(p => p);
 
-    // Level 3: /area/component/topic -> fetch topic details
+    // Handle virtual folder paths: /area/component/data/topic
+    // Transform to: /area/component/topic for API call
+    if (parts.length === 4 && parts[2] === 'data') {
+      const componentId = parts[1];
+      const encodedTopicName = parts[3];
+
+      // Decode topic name using standard percent-decoding
+      const decodedTopicName = decodeURIComponent(encodedTopicName);
+
+      const response = await fetchWithTimeout(
+        this.getUrl(`components/${componentId}/data/${encodedTopicName}`),
+        {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' },
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error(`Topic ${decodedTopicName} not found for component ${componentId}`);
+        }
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const topic = await response.json() as ComponentTopic;
+
+      return {
+        id: encodedTopicName,
+        name: topic.topic || `/${decodedTopicName}`,
+        href: path,
+        topicData: topic,
+        rosType: topic.type,
+        type: 'topic',
+      };
+    }
+
+    // Level 3: /area/component/topic -> fetch topic details (legacy path format)
     if (parts.length === 3) {
       const componentId = parts[1];
       const encodedTopicName = parts[2];
@@ -325,6 +380,306 @@ export class SovdApiClient {
     if (!response.ok) {
       const errorData = (await response.json().catch(() => ({}))) as { error?: string; message?: string };
       throw new Error(errorData.error || errorData.message || `Server error (HTTP ${response.status})`);
+    }
+
+    return await response.json();
+  }
+
+  // ===========================================================================
+  // CONFIGURATIONS API (ROS 2 Parameters)
+  // ===========================================================================
+
+  /**
+   * List all configurations (parameters) for a component
+   * @param componentId Component ID
+   */
+  async listConfigurations(componentId: string): Promise<ComponentConfigurations> {
+    const response = await fetchWithTimeout(
+      this.getUrl(`components/${componentId}/configurations`),
+      {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => ({}))) as { error?: string; details?: string };
+      throw new Error(errorData.error || errorData.details || `HTTP ${response.status}`);
+    }
+
+    return await response.json();
+  }
+
+  /**
+   * Get a specific configuration (parameter) value and metadata
+   * @param componentId Component ID
+   * @param paramName Parameter name
+   */
+  async getConfiguration(componentId: string, paramName: string): Promise<ConfigurationDetail> {
+    const response = await fetchWithTimeout(
+      this.getUrl(`components/${componentId}/configurations/${encodeURIComponent(paramName)}`),
+      {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => ({}))) as { error?: string; details?: string };
+      throw new Error(errorData.error || errorData.details || `HTTP ${response.status}`);
+    }
+
+    return await response.json();
+  }
+
+  /**
+   * Set a configuration (parameter) value
+   * @param componentId Component ID
+   * @param paramName Parameter name
+   * @param request Request with new value
+   */
+  async setConfiguration(
+    componentId: string,
+    paramName: string,
+    request: SetConfigurationRequest
+  ): Promise<SetConfigurationResponse> {
+    const response = await fetchWithTimeout(
+      this.getUrl(`components/${componentId}/configurations/${encodeURIComponent(paramName)}`),
+      {
+        method: 'PUT',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => ({}))) as { error?: string; details?: string };
+      throw new Error(errorData.error || errorData.details || `HTTP ${response.status}`);
+    }
+
+    return await response.json();
+  }
+
+  /**
+   * Reset a configuration (parameter) to its default value
+   * @param componentId Component ID
+   * @param paramName Parameter name
+   */
+  async resetConfiguration(
+    componentId: string,
+    paramName: string
+  ): Promise<ResetConfigurationResponse> {
+    const response = await fetchWithTimeout(
+      this.getUrl(`components/${componentId}/configurations/${encodeURIComponent(paramName)}`),
+      {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => ({}))) as { error?: string; details?: string };
+      throw new Error(errorData.error || errorData.details || `HTTP ${response.status}`);
+    }
+
+    return await response.json();
+  }
+
+  /**
+   * Reset all configurations for a component to their default values
+   * @param componentId Component ID
+   */
+  async resetAllConfigurations(
+    componentId: string
+  ): Promise<ResetAllConfigurationsResponse> {
+    const response = await fetchWithTimeout(
+      this.getUrl(`components/${componentId}/configurations`),
+      {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+        },
+      }
+    );
+
+    // Accept both 200 (full success) and 207 (partial success)
+    if (!response.ok && response.status !== 207) {
+      const errorData = (await response.json().catch(() => ({}))) as { error?: string; details?: string };
+      throw new Error(errorData.error || errorData.details || `HTTP ${response.status}`);
+    }
+
+    return await response.json();
+  }
+
+  // ===========================================================================
+  // OPERATIONS API (ROS 2 Services & Actions)
+  // ===========================================================================
+
+  /**
+   * List all operations (services + actions) for a component
+   * This data comes from the component operations endpoint
+   * @param componentId Component ID
+   */
+  async listOperations(componentId: string): Promise<Operation[]> {
+    // Fetch from dedicated operations endpoint which includes type_info with schema
+    const response = await fetchWithTimeout(
+      this.getUrl(`components/${componentId}/operations`),
+      {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      }
+    );
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        // Component not found or has no operations
+        return [];
+      }
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    return await response.json();
+  }
+
+  /**
+   * Invoke an operation (service call or action goal)
+   * @param componentId Component ID
+   * @param operationName Operation name
+   * @param request Request data (request for services, goal for actions)
+   */
+  async invokeOperation(
+    componentId: string,
+    operationName: string,
+    request: InvokeOperationRequest
+  ): Promise<OperationResponse> {
+    const response = await fetchWithTimeout(
+      this.getUrl(`components/${componentId}/operations/${encodeURIComponent(operationName)}`),
+      {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+      },
+      30000 // 30 second timeout for operations
+    );
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => ({}))) as { error?: string; details?: string };
+      throw new Error(errorData.error || errorData.details || `HTTP ${response.status}`);
+    }
+
+    return await response.json();
+  }
+
+  /**
+   * Get action goal status
+   * @param componentId Component ID
+   * @param operationName Action name
+   * @param goalId Optional specific goal ID
+   */
+  async getActionStatus(
+    componentId: string,
+    operationName: string,
+    goalId?: string
+  ): Promise<ActionGoalStatus> {
+    const url = goalId
+      ? this.getUrl(`components/${componentId}/operations/${encodeURIComponent(operationName)}/status?goal_id=${goalId}`)
+      : this.getUrl(`components/${componentId}/operations/${encodeURIComponent(operationName)}/status`);
+
+    const response = await fetchWithTimeout(url, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => ({}))) as { error?: string; details?: string };
+      throw new Error(errorData.error || errorData.details || `HTTP ${response.status}`);
+    }
+
+    return await response.json();
+  }
+
+  /**
+   * Get all action goals status for an operation
+   * @param componentId Component ID
+   * @param operationName Action name
+   */
+  async getAllActionGoalsStatus(
+    componentId: string,
+    operationName: string
+  ): Promise<AllActionGoalsStatus> {
+    const response = await fetchWithTimeout(
+      this.getUrl(`components/${componentId}/operations/${encodeURIComponent(operationName)}/status?all=true`),
+      {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => ({}))) as { error?: string; details?: string };
+      throw new Error(errorData.error || errorData.details || `HTTP ${response.status}`);
+    }
+
+    return await response.json();
+  }
+
+  /**
+   * Get action goal result (for completed goals)
+   * @param componentId Component ID
+   * @param operationName Action name
+   * @param goalId Goal UUID
+   */
+  async getActionResult(
+    componentId: string,
+    operationName: string,
+    goalId: string
+  ): Promise<ActionGoalResult> {
+    const response = await fetchWithTimeout(
+      this.getUrl(`components/${componentId}/operations/${encodeURIComponent(operationName)}/result?goal_id=${goalId}`),
+      {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => ({}))) as { error?: string; details?: string };
+      throw new Error(errorData.error || errorData.details || `HTTP ${response.status}`);
+    }
+
+    return await response.json();
+  }
+
+  /**
+   * Cancel an action goal
+   * @param componentId Component ID
+   * @param operationName Action name
+   * @param goalId Goal UUID to cancel
+   */
+  async cancelAction(
+    componentId: string,
+    operationName: string,
+    goalId: string
+  ): Promise<ActionCancelResponse> {
+    const response = await fetchWithTimeout(
+      this.getUrl(`components/${componentId}/operations/${encodeURIComponent(operationName)}?goal_id=${goalId}`),
+      {
+        method: 'DELETE',
+        headers: { 'Accept': 'application/json' },
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => ({}))) as { error?: string; details?: string };
+      throw new Error(errorData.error || errorData.details || `HTTP ${response.status}`);
     }
 
     return await response.json();
