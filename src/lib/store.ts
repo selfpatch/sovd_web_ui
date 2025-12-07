@@ -1,7 +1,20 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { toast } from 'react-toastify';
-import type { SovdEntity, SovdEntityDetails, EntityTreeNode, ComponentTopic, TopicNodeData } from './types';
+import type {
+  SovdEntity,
+  SovdEntityDetails,
+  EntityTreeNode,
+  ComponentTopic,
+  TopicNodeData,
+  Parameter,
+  Operation,
+  ActionGoalStatus,
+  InvokeOperationRequest,
+  OperationResponse,
+  VirtualFolderData,
+} from './types';
+import { isVirtualFolderData } from './types';
 import { createSovdClient, type SovdApiClient } from './sovd-api';
 
 const STORAGE_KEY = 'sovd_web_ui_server_url';
@@ -26,6 +39,18 @@ export interface AppState {
   isLoadingDetails: boolean;
   isRefreshing: boolean;
 
+  // Configurations state (ROS 2 Parameters)
+  configurations: Map<string, Parameter[]>; // componentId -> parameters
+  isLoadingConfigurations: boolean;
+
+  // Operations state (ROS 2 Services & Actions)
+  operations: Map<string, Operation[]>; // componentId -> operations
+  isLoadingOperations: boolean;
+
+  // Active action goals (for monitoring async actions)
+  activeGoals: Map<string, ActionGoalStatus>; // goalId -> status
+  autoRefreshGoals: boolean; // checkbox state for auto-refresh
+
   // Actions
   connect: (url: string, baseEndpoint?: string) => Promise<boolean>;
   disconnect: () => void;
@@ -35,6 +60,19 @@ export interface AppState {
   selectEntity: (path: string) => Promise<void>;
   refreshSelectedEntity: () => Promise<void>;
   clearSelection: () => void;
+
+  // Configurations actions
+  fetchConfigurations: (componentId: string) => Promise<void>;
+  setParameter: (componentId: string, paramName: string, value: unknown) => Promise<boolean>;
+  resetParameter: (componentId: string, paramName: string) => Promise<boolean>;
+  resetAllConfigurations: (componentId: string) => Promise<{ reset_count: number; failed_count: number }>;
+
+  // Operations actions
+  fetchOperations: (componentId: string) => Promise<void>;
+  invokeOperation: (componentId: string, operationName: string, request: InvokeOperationRequest) => Promise<OperationResponse | null>;
+  refreshActionStatus: (componentId: string, operationName: string, goalId: string) => Promise<void>;
+  cancelActionGoal: (componentId: string, operationName: string, goalId: string) => Promise<boolean>;
+  setAutoRefreshGoals: (enabled: boolean) => void;
 }
 
 /**
@@ -43,42 +81,45 @@ export interface AppState {
 function toTreeNode(entity: SovdEntity, parentPath: string = ''): EntityTreeNode {
   const path = parentPath ? `${parentPath}/${entity.id}` : `/${entity.id}`;
 
-  // If this is a component with topicsInfo, pre-populate children
+  // If this is a component, create virtual subfolders: data/, operations/, configurations/
   let children: EntityTreeNode[] | undefined;
-  if (entity.type === 'component' && entity.topicsInfo) {
-    const allTopics = new Set<string>();
-
-    // Collect unique topics from publishes and subscribes
-    entity.topicsInfo.publishes?.forEach(t => allTopics.add(t));
-    entity.topicsInfo.subscribes?.forEach(t => allTopics.add(t));
-
-    if (allTopics.size > 0) {
-      children = Array.from(allTopics).sort().map(topicName => {
-        const cleanName = topicName.startsWith('/') ? topicName.slice(1) : topicName;
-        // Use percent-encoding for topic names in URLs
-        // e.g., 'powertrain/engine/temp' -> 'powertrain%2Fengine%2Ftemp'
-        const encodedName = encodeURIComponent(cleanName);
-        const isPublisher = entity.topicsInfo?.publishes?.includes(topicName) ?? false;
-        const isSubscriber = entity.topicsInfo?.subscribes?.includes(topicName) ?? false;
-
-        return {
-          id: encodedName,
-          name: topicName,
-          type: 'topic',
-          href: `${path}/${encodedName}`,
-          path: `${path}/${encodedName}`,
-          hasChildren: false,
-          isLoading: false,
-          isExpanded: false,
-          // Store topic direction info
-          data: {
-            topic: topicName,
-            isPublisher,
-            isSubscriber
-          }
-        };
-      });
-    }
+  if (entity.type === 'component') {
+    // Create virtual subfolder nodes for component
+    children = [
+      {
+        id: 'data',
+        name: 'data',
+        type: 'folder',
+        href: `${path}/data`,
+        path: `${path}/data`,
+        hasChildren: true, // Topics will be loaded here
+        isLoading: false,
+        isExpanded: false,
+        data: { folderType: 'data', componentId: entity.id, topicsInfo: entity.topicsInfo }
+      },
+      {
+        id: 'operations',
+        name: 'operations',
+        type: 'folder',
+        href: `${path}/operations`,
+        path: `${path}/operations`,
+        hasChildren: true, // Services/actions loaded on demand
+        isLoading: false,
+        isExpanded: false,
+        data: { folderType: 'operations', componentId: entity.id }
+      },
+      {
+        id: 'configurations',
+        name: 'configurations',
+        type: 'folder',
+        href: `${path}/configurations`,
+        path: `${path}/configurations`,
+        hasChildren: true, // Parameters loaded on demand
+        isLoading: false,
+        isExpanded: false,
+        data: { folderType: 'configurations', componentId: entity.id }
+      }
+    ];
   }
 
   return {
@@ -148,6 +189,18 @@ export const useAppStore = create<AppState>()(
       selectedEntity: null,
       isLoadingDetails: false,
       isRefreshing: false,
+
+      // Configurations state
+      configurations: new Map(),
+      isLoadingConfigurations: false,
+
+      // Operations state
+      operations: new Map(),
+      isLoadingOperations: false,
+
+      // Active goals state
+      activeGoals: new Map(),
+      autoRefreshGoals: false,
 
       // Connect to SOVD server
       connect: async (url: string, baseEndpoint: string = '') => {
@@ -231,6 +284,106 @@ export const useAppStore = create<AppState>()(
 
         // Check if we already have this data in the tree
         const node = findNode(rootEntities, path);
+
+        // Handle virtual folders (data/, operations/, configurations/)
+        if (node && isVirtualFolderData(node.data)) {
+          const folderData = node.data as VirtualFolderData;
+
+          // Skip if already has loaded children
+          if (node.children && node.children.length > 0) {
+            return;
+          }
+
+          set({ loadingPaths: [...loadingPaths, path] });
+
+          try {
+            let children: EntityTreeNode[] = [];
+
+            if (folderData.folderType === 'data') {
+              // Load topics for data folder
+              const topics = await client.getEntities(path.replace('/data', ''));
+              children = topics.map((topic: SovdEntity & { data?: ComponentTopic }) => {
+                const cleanName = topic.name.startsWith('/') ? topic.name.slice(1) : topic.name;
+                const encodedName = encodeURIComponent(cleanName);
+                return {
+                  id: encodedName,
+                  name: topic.name,
+                  type: 'topic',
+                  href: `${path}/${encodedName}`,
+                  path: `${path}/${encodedName}`,
+                  hasChildren: false,
+                  isLoading: false,
+                  isExpanded: false,
+                  data: topic.data || {
+                    topic: topic.name,
+                    isPublisher: folderData.topicsInfo?.publishes?.includes(topic.name) ?? false,
+                    isSubscriber: folderData.topicsInfo?.subscribes?.includes(topic.name) ?? false,
+                  }
+                };
+              });
+            } else if (folderData.folderType === 'operations') {
+              // Load operations for operations folder
+              const ops = await client.listOperations(folderData.componentId);
+              children = ops.map(op => ({
+                id: op.name,
+                name: op.name,
+                type: op.kind === 'service' ? 'service' : 'action',
+                href: `${path}/${op.name}`,
+                path: `${path}/${op.name}`,
+                hasChildren: false,
+                isLoading: false,
+                isExpanded: false,
+                data: op
+              }));
+            } else if (folderData.folderType === 'configurations') {
+              // Load parameters for configurations folder
+              const config = await client.listConfigurations(folderData.componentId);
+              children = config.parameters.map(param => ({
+                id: param.name,
+                name: param.name,
+                type: 'parameter',
+                href: `${path}/${param.name}`,
+                path: `${path}/${param.name}`,
+                hasChildren: false,
+                isLoading: false,
+                isExpanded: false,
+                data: param
+              }));
+            }
+
+            const updatedTree = updateNodeInTree(rootEntities, path, n => ({
+              ...n,
+              children,
+              hasChildren: children.length > 0,
+              isLoading: false,
+            }));
+
+            set({
+              rootEntities: updatedTree,
+              loadingPaths: get().loadingPaths.filter(p => p !== path),
+            });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            // Don't show error for empty results - some components may not have operations/configs
+            if (!message.includes('not found')) {
+              toast.error(`Failed to load ${folderData.folderType}: ${message}`);
+            }
+            // Still update tree to show empty folder
+            const updatedTree = updateNodeInTree(rootEntities, path, n => ({
+              ...n,
+              children: [],
+              hasChildren: false,
+              isLoading: false,
+            }));
+            set({
+              rootEntities: updatedTree,
+              loadingPaths: get().loadingPaths.filter(p => p !== path),
+            });
+          }
+          return;
+        }
+
+        // Regular node loading (areas, components)
         if (node && Array.isArray(node.children) && node.children.length > 0) {
           // Check if children have full data or just TopicNodeData
           // TopicNodeData has isPublisher/isSubscriber but no 'type' field in data
@@ -286,8 +439,31 @@ export const useAppStore = create<AppState>()(
 
       // Select an entity and load its details
       selectEntity: async (path: string) => {
-        const { client, selectedPath, rootEntities, expandedPaths } = get();
+        const { client, selectedPath, rootEntities, expandedPaths, loadChildren } = get();
         if (!client || path === selectedPath) return;
+
+        // Auto-expand parent paths and load children if needed
+        // This ensures navigation to deep paths (like /area/component/data/topic) works
+        const pathParts = path.split('/').filter(Boolean);
+        const newExpandedPaths = [...expandedPaths];
+        let currentPath = '';
+
+        for (let i = 0; i < pathParts.length - 1; i++) {
+          currentPath += '/' + pathParts[i];
+          if (!newExpandedPaths.includes(currentPath)) {
+            newExpandedPaths.push(currentPath);
+          }
+          // Check if this node needs children loaded
+          const parentNode = findNode(rootEntities, currentPath);
+          if (parentNode && parentNode.hasChildren !== false && !parentNode.children) {
+            // Trigger load but don't await - let it happen in background
+            loadChildren(currentPath);
+          }
+        }
+
+        if (newExpandedPaths.length !== expandedPaths.length) {
+          set({ expandedPaths: newExpandedPaths });
+        }
 
         // OPTIMIZATION: Check if tree already has this data
         const node = findNode(rootEntities, path);
@@ -361,49 +537,89 @@ export const useAppStore = create<AppState>()(
           return;
         }
 
-        // Optimization for Component - check if we have full ComponentTopic data in children
+        // Optimization for Component - just select it and auto-expand
+        // Don't modify children - virtual folders (data/, operations/, configurations/) are already there
         if (node && node.type === 'component') {
-          // Auto-expand component to show topics
+          // Auto-expand component to show virtual folders
           const newExpandedPaths = expandedPaths.includes(path)
             ? expandedPaths
             : [...expandedPaths, path];
 
-          // Check if children have FULL ComponentTopic data (not just TopicNodeData)
-          const hasFullTopicData = node.children &&
-            node.children.length > 0 &&
-            node.children[0].data &&
-            typeof node.children[0].data === 'object' &&
-            'type' in (node.children[0].data as object);
+          set({
+            selectedPath: path,
+            expandedPaths: newExpandedPaths,
+            isLoadingDetails: false,
+            selectedEntity: {
+              id: node.id,
+              name: node.name,
+              type: node.type,
+              href: node.href,
+              // Pass topicsInfo if available for the Data tab
+              topicsInfo: node.topicsInfo,
+            }
+          });
+          return;
+        }
 
-          if (hasFullTopicData) {
-            // Use full ComponentTopic data from tree cache
-            const fullTopics = node.children!
-              .filter(child => child.type === 'topic' && child.data)
-              .map(child => child.data as ComponentTopic);
+        // Handle virtual folder selection - show appropriate panel
+        if (node && isVirtualFolderData(node.data)) {
+          const folderData = node.data as VirtualFolderData;
+          set({
+            selectedPath: path,
+            isLoadingDetails: false,
+            selectedEntity: {
+              id: node.id,
+              name: `${folderData.componentId} / ${node.name}`,
+              type: 'folder',
+              href: node.href,
+              // Pass folder info so detail panel knows what to show
+              folderType: folderData.folderType,
+              componentId: folderData.componentId,
+            }
+          });
+          return;
+        }
 
-            set({
-              selectedPath: path,
-              expandedPaths: newExpandedPaths,
-              isLoadingDetails: false,
-              selectedEntity: {
-                id: node.id,
-                name: node.name,
-                type: node.type,
-                href: node.href,
-                // Full topic data with QoS, publishers, subscribers
-                topics: fullTopics,
-                // Simple lists for navigation
-                topicsInfo: {
-                  publishes: fullTopics.map(t => t.topic),
-                  subscribes: [],
-                }
-              }
-            });
-            return;
-          }
+        // Handle parameter selection - show parameter detail with data from tree
+        if (node && node.type === 'parameter' && node.data) {
+          // Extract componentId from path: /area/component/configurations/paramName
+          const pathSegments = path.split('/').filter(Boolean);
+          const componentId = pathSegments.length >= 2 ? pathSegments[1] : pathSegments[0];
 
-          // Children only have TopicNodeData (from topicsInfo) - need to fetch full data from API
-          // Fall through to the API fetch below
+          set({
+            selectedPath: path,
+            isLoadingDetails: false,
+            selectedEntity: {
+              id: node.id,
+              name: node.name,
+              type: 'parameter',
+              href: node.href,
+              data: node.data,
+              componentId,
+            }
+          });
+          return;
+        }
+
+        // Handle service/action selection - show operation detail with data from tree
+        if (node && (node.type === 'service' || node.type === 'action') && node.data) {
+          // Extract componentId from path: /area/component/operations/opName
+          const pathSegments = path.split('/').filter(Boolean);
+          const componentId = pathSegments.length >= 2 ? pathSegments[1] : pathSegments[0];
+
+          set({
+            selectedPath: path,
+            isLoadingDetails: false,
+            selectedEntity: {
+              id: node.id,
+              name: node.name,
+              type: node.type,
+              href: node.href,
+              data: node.data,
+              componentId,
+            }
+          });
+          return;
         }
 
         set({
@@ -414,81 +630,6 @@ export const useAppStore = create<AppState>()(
 
         try {
           const details = await client.getEntityDetails(path);
-
-          // SYNC: Update tree with fetched topics AND auto-expand the node
-          // Prefer full topics array (with QoS, publishers) over topicsInfo (names only)
-          if (details.topics && details.topics.length > 0) {
-            const children = details.topics.map(topic => {
-              const cleanName = topic.topic.startsWith('/') ? topic.topic.slice(1) : topic.topic;
-              const encodedName = encodeURIComponent(cleanName);
-              return {
-                id: encodedName,
-                name: topic.topic,
-                type: 'topic' as const,
-                href: `${path}/${encodedName}`,
-                hasChildren: false,
-                path: `${path}/${encodedName}`,
-                // Store FULL ComponentTopic data for rich view
-                data: topic
-              };
-            });
-
-            const updatedTree = updateNodeInTree(rootEntities, path, n => ({
-              ...n,
-              children,
-              isLoading: false
-            }));
-
-            // Auto-expand the node if it has topics
-            const newExpandedPaths = expandedPaths.includes(path)
-              ? expandedPaths
-              : [...expandedPaths, path];
-
-            set({
-              rootEntities: updatedTree,
-              expandedPaths: newExpandedPaths
-            });
-          } else if (details.topicsInfo) {
-            // Fallback to topicsInfo if topics array not available
-            const allTopics = new Set<string>();
-            details.topicsInfo.publishes?.forEach(t => allTopics.add(t));
-            details.topicsInfo.subscribes?.forEach(t => allTopics.add(t));
-
-            const children = Array.from(allTopics).sort().map(topicName => {
-              const cleanName = topicName.startsWith('/') ? topicName.slice(1) : topicName;
-              const encodedName = encodeURIComponent(cleanName);
-              return {
-                id: encodedName,
-                name: topicName,
-                type: 'topic' as const,
-                href: `${path}/${encodedName}`,
-                hasChildren: false,
-                path: `${path}/${encodedName}`,
-                data: {
-                  topic: topicName,
-                  isPublisher: details.topicsInfo?.publishes?.includes(topicName) ?? false,
-                  isSubscriber: details.topicsInfo?.subscribes?.includes(topicName) ?? false,
-                }
-              };
-            });
-
-            const updatedTree = updateNodeInTree(rootEntities, path, n => ({
-              ...n,
-              children,
-              isLoading: false
-            }));
-
-            // Auto-expand the node if it has topics
-            const newExpandedPaths = expandedPaths.includes(path)
-              ? expandedPaths
-              : [...expandedPaths, path];
-
-            set({
-              rootEntities: updatedTree,
-              expandedPaths: newExpandedPaths
-            });
-          }
-
           set({ selectedEntity: details, isLoadingDetails: false });
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Unknown error';
@@ -544,6 +685,219 @@ export const useAppStore = create<AppState>()(
           selectedPath: null,
           selectedEntity: null,
         });
+      },
+
+      // ===========================================================================
+      // CONFIGURATIONS ACTIONS (ROS 2 Parameters)
+      // ===========================================================================
+
+      fetchConfigurations: async (componentId: string) => {
+        const { client, configurations } = get();
+        if (!client) return;
+
+        set({ isLoadingConfigurations: true });
+
+        try {
+          const result = await client.listConfigurations(componentId);
+          const newConfigs = new Map(configurations);
+          newConfigs.set(componentId, result.parameters);
+          set({ configurations: newConfigs, isLoadingConfigurations: false });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          toast.error(`Failed to load configurations: ${message}`);
+          set({ isLoadingConfigurations: false });
+        }
+      },
+
+      setParameter: async (componentId: string, paramName: string, value: unknown) => {
+        const { client, configurations } = get();
+        if (!client) return false;
+
+        try {
+          const result = await client.setConfiguration(componentId, paramName, { value });
+
+          if (result.status === 'success') {
+            // Update local state with new value
+            const newConfigs = new Map(configurations);
+            const params = newConfigs.get(componentId) || [];
+            const updatedParams = params.map(p =>
+              p.name === paramName ? { ...p, value: result.parameter.value } : p
+            );
+            newConfigs.set(componentId, updatedParams);
+            set({ configurations: newConfigs });
+            toast.success(`Parameter ${paramName} updated`);
+            return true;
+          } else {
+            toast.error(`Failed to set parameter: ${result.error}`);
+            return false;
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          toast.error(`Failed to set parameter: ${message}`);
+          return false;
+        }
+      },
+
+      resetParameter: async (componentId: string, paramName: string) => {
+        const { client, configurations } = get();
+        if (!client) return false;
+
+        try {
+          const result = await client.resetConfiguration(componentId, paramName);
+
+          // Update local state with reset value
+          const newConfigs = new Map(configurations);
+          const params = newConfigs.get(componentId) || [];
+          const updatedParams = params.map(p =>
+            p.name === paramName ? { ...p, value: result.value } : p
+          );
+          newConfigs.set(componentId, updatedParams);
+          set({ configurations: newConfigs });
+          toast.success(`Parameter ${paramName} reset to default`);
+          return true;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          toast.error(`Failed to reset parameter: ${message}`);
+          return false;
+        }
+      },
+
+      resetAllConfigurations: async (componentId: string) => {
+        const { client, fetchConfigurations } = get();
+        if (!client) return { reset_count: 0, failed_count: 0 };
+
+        try {
+          const result = await client.resetAllConfigurations(componentId);
+
+          if (result.failed_count === 0) {
+            toast.success(`Reset ${result.reset_count} parameters to defaults`);
+          } else {
+            toast.warning(`Reset ${result.reset_count} parameters, ${result.failed_count} failed`);
+          }
+
+          // Refresh configurations to get updated values
+          await fetchConfigurations(componentId);
+
+          return { reset_count: result.reset_count, failed_count: result.failed_count };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          toast.error(`Failed to reset configurations: ${message}`);
+          return { reset_count: 0, failed_count: 0 };
+        }
+      },
+
+      // ===========================================================================
+      // OPERATIONS ACTIONS (ROS 2 Services & Actions)
+      // ===========================================================================
+
+      fetchOperations: async (componentId: string) => {
+        const { client, operations } = get();
+        if (!client) return;
+
+        set({ isLoadingOperations: true });
+
+        try {
+          const result = await client.listOperations(componentId);
+          const newOps = new Map(operations);
+          newOps.set(componentId, result);
+          set({ operations: newOps, isLoadingOperations: false });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          toast.error(`Failed to load operations: ${message}`);
+          set({ isLoadingOperations: false });
+        }
+      },
+
+      invokeOperation: async (componentId: string, operationName: string, request: InvokeOperationRequest) => {
+        const { client, activeGoals } = get();
+        if (!client) return null;
+
+        try {
+          const result = await client.invokeOperation(componentId, operationName, request);
+
+          if (result.kind === 'action' && result.status === 'success') {
+            // Track the new action goal
+            // goal_status can be 'accepted', 'executing', etc. - use it directly
+            const newGoals = new Map(activeGoals);
+            newGoals.set(result.goal_id, {
+              goal_id: result.goal_id,
+              status: result.goal_status as ActionGoalStatus['status'],
+              action_path: `/${componentId}/${operationName}`,
+              action_type: request.type || 'unknown',
+            });
+            set({ activeGoals: newGoals });
+            toast.success(`Action goal ${result.goal_id.slice(0, 8)}... accepted`);
+          } else if (result.kind === 'service') {
+            toast.success(`Service ${operationName} called successfully`);
+          }
+
+          return result;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          toast.error(`Operation failed: ${message}`);
+          return null;
+        }
+      },
+
+      refreshActionStatus: async (componentId: string, operationName: string, goalId: string) => {
+        const { client, activeGoals } = get();
+        if (!client) return;
+
+        try {
+          const status = await client.getActionStatus(componentId, operationName, goalId);
+          const newGoals = new Map(activeGoals);
+          newGoals.set(goalId, status);
+          set({ activeGoals: newGoals });
+
+          // If goal is terminal, fetch result
+          if (['succeeded', 'canceled', 'aborted'].includes(status.status)) {
+            try {
+              const result = await client.getActionResult(componentId, operationName, goalId);
+              const updatedGoals = new Map(get().activeGoals);
+              const existing = updatedGoals.get(goalId);
+              if (existing) {
+                updatedGoals.set(goalId, { ...existing, last_feedback: result.result });
+              }
+              set({ activeGoals: updatedGoals });
+            } catch {
+              // Result might not be available yet
+            }
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          toast.error(`Failed to refresh action status: ${message}`);
+        }
+      },
+
+      cancelActionGoal: async (componentId: string, operationName: string, goalId: string) => {
+        const { client, activeGoals } = get();
+        if (!client) return false;
+
+        try {
+          const result = await client.cancelAction(componentId, operationName, goalId);
+
+          if (result.status === 'canceling') {
+            const newGoals = new Map(activeGoals);
+            const existing = newGoals.get(goalId);
+            if (existing) {
+              newGoals.set(goalId, { ...existing, status: 'canceling' });
+            }
+            set({ activeGoals: newGoals });
+            toast.success(`Cancel request sent for goal ${goalId.slice(0, 8)}...`);
+            return true;
+          } else {
+            toast.error(`Failed to cancel: ${result.message}`);
+            return false;
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          toast.error(`Failed to cancel action: ${message}`);
+          return false;
+        }
+      },
+
+      setAutoRefreshGoals: (enabled: boolean) => {
+        set({ autoRefreshGoals: enabled });
       },
     }),
     {

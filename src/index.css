@@ -29,32 +29,32 @@
 
 :root {
   --radius: 0.5rem;
-  
+
   /* Green Theme Light */
   --background: oklch(0.985 0.005 145); /* Very light green tint */
   --foreground: oklch(0.145 0.02 145);
-  
+
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0.02 145);
-  
+
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0.02 145);
-  
+
   --primary: oklch(0.55 0.15 145); /* Vibrant Green */
   --primary-foreground: oklch(0.985 0 0);
-  
+
   --secondary: oklch(0.95 0.03 145); /* Light Green */
   --secondary-foreground: oklch(0.35 0.1 145);
-  
+
   --muted: oklch(0.95 0.02 145);
   --muted-foreground: oklch(0.50 0.05 145);
-  
+
   --accent: oklch(0.93 0.04 145);
   --accent-foreground: oklch(0.35 0.1 145);
-  
+
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
-  
+
   --border: oklch(0.90 0.03 145);
   --input: oklch(0.90 0.03 145);
   --ring: oklch(0.55 0.15 145);
@@ -64,28 +64,28 @@
   /* Green Theme Dark */
   --background: oklch(0.12 0.02 145); /* Dark Green-Black */
   --foreground: oklch(0.985 0.005 145);
-  
+
   --card: oklch(0.15 0.02 145);
   --card-foreground: oklch(0.985 0.005 145);
-  
+
   --popover: oklch(0.15 0.02 145);
   --popover-foreground: oklch(0.985 0.005 145);
-  
+
   --primary: oklch(0.65 0.15 145); /* Brighter Green for dark mode */
   --primary-foreground: oklch(0.12 0.02 145);
-  
+
   --secondary: oklch(0.25 0.04 145);
   --secondary-foreground: oklch(0.985 0.005 145);
-  
+
   --muted: oklch(0.25 0.04 145);
   --muted-foreground: oklch(0.70 0.05 145);
-  
+
   --accent: oklch(0.25 0.04 145);
   --accent-foreground: oklch(0.985 0.005 145);
-  
+
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.985 0 0);
-  
+
   --border: oklch(0.25 0.04 145);
   --input: oklch(0.25 0.04 145);
   --ring: oklch(0.65 0.15 145);
@@ -98,4 +98,23 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Custom animations */
+@keyframes progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+    width: 40%;
+  }
+  50% {
+    width: 60%;
+  }
+  100% {
+    transform: translateX(250%);
+    width: 40%;
+  }
+}
+
+.animate-progress-indeterminate {
+  animation: progress-indeterminate 1.5s ease-in-out infinite;
 }

@@ -1,10 +1,11 @@
 import { useEffect } from 'react';
 import { useShallow } from 'zustand/shallow';
-import { ChevronRight, Loader2, Server, Folder, FileJson, Box, MessageSquare, ArrowUp, ArrowDown } from 'lucide-react';
+import { ChevronRight, Loader2, Server, Folder, FileJson, Box, MessageSquare, ArrowUp, ArrowDown, Database, Zap, Clock, Settings, Sliders } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useAppStore } from '@/lib/store';
-import type { EntityTreeNode as EntityTreeNodeType, TopicNodeData } from '@/lib/types';
+import type { EntityTreeNode as EntityTreeNodeType, TopicNodeData, VirtualFolderData, Parameter } from '@/lib/types';
+import { isVirtualFolderData } from '@/lib/types';
 
 interface EntityTreeNodeProps {
     node: EntityTreeNodeType;
@@ -14,7 +15,20 @@ interface EntityTreeNodeProps {
 /**
  * Get icon for entity type
  */
-function getEntityIcon(type: string) {
+function getEntityIcon(type: string, data?: unknown) {
+    // Check for virtual folder types
+    if (isVirtualFolderData(data)) {
+        const folderData = data as VirtualFolderData;
+        switch (folderData.folderType) {
+            case 'data':
+                return Database;
+            case 'operations':
+                return Zap;
+            case 'configurations':
+                return Settings;
+        }
+    }
+
     switch (type.toLowerCase()) {
         case 'device':
         case 'server':
@@ -27,6 +41,12 @@ function getEntityIcon(type: string) {
             return Folder;
         case 'topic':
             return MessageSquare;
+        case 'service':
+            return Zap;
+        case 'action':
+            return Clock;
+        case 'parameter':
+            return Sliders;
         default:
             return FileJson;
     }
@@ -37,6 +57,13 @@ function getEntityIcon(type: string) {
  */
 function isTopicNodeData(data: unknown): data is TopicNodeData {
     return !!data && typeof data === 'object' && 'isPublisher' in data && 'isSubscriber' in data;
+}
+
+/**
+ * Check if node data is Parameter
+ */
+function isParameterData(data: unknown): data is Parameter {
+    return !!data && typeof data === 'object' && 'type' in data && 'value' in data && !('kind' in data);
 }
 
 export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
@@ -62,10 +89,11 @@ export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
     const isLoading = loadingPaths.includes(node.path);
     const isSelected = selectedPath === node.path;
     const hasChildren = node.hasChildren !== false; // Default to true if not specified
-    const Icon = getEntityIcon(node.type);
+    const Icon = getEntityIcon(node.type, node.data);
 
     // Get topic direction info if available
     const topicData = isTopicNodeData(node.data) ? node.data : null;
+    const parameterData = isParameterData(node.data) ? node.data : null;
 
     // Load children when expanded and no children loaded yet
     useEffect(() => {
@@ -135,6 +163,14 @@ export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
                     </div>
                 )}
 
+                {/* Parameter value indicator */}
+                {parameterData && (
+                    <span className="text-xs text-muted-foreground font-mono truncate max-w-[100px]" title={String(parameterData.value)}>
+                        {String(parameterData.value)}
+                    </span>
+                )}
+
+                {/* Type label */}
                 <span className={cn(
                     "text-xs shrink-0",
                     isSelected ? "text-primary/70" : "text-muted-foreground"
@@ -145,9 +181,22 @@ export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
 
             {hasChildren && (
                 <CollapsibleContent>
-                    {node.children?.map((child) => (
-                        <EntityTreeNode key={child.path} node={child} depth={depth + 1} />
-                    ))}
+                    {node.children && node.children.length > 0 ? (
+                        node.children.map((child) => (
+                            <EntityTreeNode key={child.path} node={child} depth={depth + 1} />
+                        ))
+                    ) : (
+                        // Empty state for folders with no children (after loading)
+                        !isLoading && node.children !== undefined && (
+                            <div
+                                className="flex items-center gap-2 py-1.5 px-2 text-muted-foreground italic text-sm select-none"
+                                style={{ paddingLeft: `${(depth + 1) * 16 + 8}px` }}
+                            >
+                                <span className="text-xs">—</span>
+                                <span>Empty</span>
+                            </div>
+                        )
+                    )}
                 </CollapsibleContent>
             )}
         </Collapsible>
