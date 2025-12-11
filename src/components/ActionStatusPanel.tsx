@@ -137,13 +137,18 @@ export function ActionStatusPanel({ componentId, operationName, goalId }: Action
 
                     <div className="flex items-center gap-2">
                         {/* Auto-refresh checkbox */}
-                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                        <label
+                            htmlFor={`auto-refresh-${goalId}`}
+                            className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer"
+                        >
                             <input
+                                id={`auto-refresh-${goalId}`}
                                 type="checkbox"
                                 checked={autoRefreshGoals}
                                 onChange={(e) => setAutoRefreshGoals(e.target.checked)}
-                                className="rounded border-muted-foreground"
+                                className="rounded border-muted-foreground focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
                                 disabled={isTerminal}
+                                aria-label="Auto-refresh action status"
                             />
                             Auto-refresh
                         </label>
