@@ -138,17 +138,24 @@ function OperationRow({
         }
     }, []);
 
+    // Track JSON validation error
+    const [jsonError, setJsonError] = useState<string | null>(null);
+
     const handleInvoke = useCallback(async () => {
+        // Validate JSON before invoking
+        let payload: unknown;
+        try {
+            payload = JSON.parse(requestBody);
+            setJsonError(null);
+        } catch (e) {
+            const errorMsg = e instanceof Error ? e.message : 'Invalid JSON';
+            setJsonError(errorMsg);
+            return; // Don't invoke with invalid JSON
+        }
+
         setIsInvoking(true);
 
         try {
-            let payload: unknown;
-            try {
-                payload = JSON.parse(requestBody);
-            } catch {
-                payload = {};
-            }
-
             // Build request based on operation kind
             const request = operation.kind === 'service'
                 ? { type: operation.type, request: payload }
@@ -274,10 +281,19 @@ function OperationRow({
                                     <div className="space-y-2">
                                         <Textarea
                                             value={requestBody}
-                                            onChange={(e) => handleJsonChange(e.target.value)}
+                                            onChange={(e) => {
+                                                handleJsonChange(e.target.value);
+                                                setJsonError(null); // Clear error on change
+                                            }}
                                             placeholder="{}"
-                                            className="font-mono text-sm min-h-[80px]"
+                                            className={`font-mono text-sm min-h-[80px] ${jsonError ? 'border-destructive' : ''}`}
                                         />
+                                        {jsonError && (
+                                            <div className="flex items-center gap-2 text-xs text-destructive">
+                                                <AlertCircle className="w-3 h-3" />
+                                                Invalid JSON: {jsonError}
+                                            </div>
+                                        )}
                                         {/* Invoke button below textarea */}
                                         <Button
                                             variant="default"
@@ -333,18 +349,20 @@ function OperationRow({
                         {history.length > 0 && (
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
-                                    <button
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
                                         onClick={() => setShowHistory(!showHistory)}
-                                        className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                                        className="h-6 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
                                     >
-                                        <History className="w-3.5 h-3.5" />
+                                        <History className="w-3.5 h-3.5 mr-1.5" />
                                         History ({history.length})
                                         {showHistory ? (
-                                            <ChevronUp className="w-3 h-3" />
+                                            <ChevronUp className="w-3 h-3 ml-1" />
                                         ) : (
-                                            <ChevronDown className="w-3 h-3" />
+                                            <ChevronDown className="w-3 h-3 ml-1" />
                                         )}
-                                    </button>
+                                    </Button>
                                     {showHistory && (
                                         <Button
                                             variant="ghost"

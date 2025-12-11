@@ -590,7 +590,7 @@ export class SovdApiClient {
     goalId?: string
   ): Promise<ActionGoalStatus> {
     const url = goalId
-      ? this.getUrl(`components/${componentId}/operations/${encodeURIComponent(operationName)}/status?goal_id=${goalId}`)
+      ? this.getUrl(`components/${componentId}/operations/${encodeURIComponent(operationName)}/status?goal_id=${encodeURIComponent(goalId)}`)
       : this.getUrl(`components/${componentId}/operations/${encodeURIComponent(operationName)}/status`);
 
     const response = await fetchWithTimeout(url, {
@@ -643,7 +643,7 @@ export class SovdApiClient {
     goalId: string
   ): Promise<ActionGoalResult> {
     const response = await fetchWithTimeout(
-      this.getUrl(`components/${componentId}/operations/${encodeURIComponent(operationName)}/result?goal_id=${goalId}`),
+      this.getUrl(`components/${componentId}/operations/${encodeURIComponent(operationName)}/result?goal_id=${encodeURIComponent(goalId)}`),
       {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
@@ -670,7 +670,7 @@ export class SovdApiClient {
     goalId: string
   ): Promise<ActionCancelResponse> {
     const response = await fetchWithTimeout(
-      this.getUrl(`components/${componentId}/operations/${encodeURIComponent(operationName)}?goal_id=${goalId}`),
+      this.getUrl(`components/${componentId}/operations/${encodeURIComponent(operationName)}?goal_id=${encodeURIComponent(goalId)}`),
       {
         method: 'DELETE',
         headers: { 'Accept': 'application/json' },

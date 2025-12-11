@@ -30,11 +30,11 @@ function ValueDisplay({ value, depth = 0 }: { value: unknown; depth?: number }) 
         if (value === '') {
             return <span className="text-muted-foreground italic">(empty)</span>;
         }
-        // Check if it's a UUID-like string
-        if (/^[a-f0-9]{32}$/i.test(value)) {
+        // Check if it's a UUID-like string (standard format with hyphens)
+        if (/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value)) {
             return (
                 <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono">
-                    {value.slice(0, 8)}...{value.slice(-8)}
+                    {value.slice(0, 8)}...{value.slice(-12)}
                 </code>
             );
         }

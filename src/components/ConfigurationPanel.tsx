@@ -183,9 +183,18 @@ function ParameterRow({
                     <div
                         className={`px-3 py-1.5 rounded border text-sm font-mono truncate ${param.read_only
                                 ? 'bg-muted text-muted-foreground cursor-not-allowed'
-                                : 'bg-background cursor-pointer hover:border-primary'
+                                : 'bg-background cursor-pointer hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2'
                             }`}
                         onClick={startEditing}
+                        onKeyDown={(e) => {
+                            if (!param.read_only && (e.key === 'Enter' || e.key === ' ')) {
+                                e.preventDefault();
+                                startEditing();
+                            }
+                        }}
+                        role={param.read_only ? undefined : 'button'}
+                        tabIndex={param.read_only ? undefined : 0}
+                        aria-label={param.read_only ? `${param.name}: ${formatValue(param.value, param.type)} (read-only)` : `Edit ${param.name}`}
                         title={param.read_only ? 'Read-only parameter' : 'Click to edit'}
                     >
                         {formatValue(param.value, param.type)}
@@ -248,7 +257,8 @@ function parseValue(input: string, type: ParameterType): unknown {
             try {
                 return JSON.parse(input);
             } catch {
-                return input;
+                // Return empty array instead of invalid string to prevent type mismatch
+                return [];
             }
         default:
             return input;
