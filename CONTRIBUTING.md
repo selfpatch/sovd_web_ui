@@ -9,21 +9,21 @@ Thanks for your interest in contributing to sovd_web_ui! This guide explains how
 - **Ensure the bug was not already reported** by searching [Issues](https://github.com/selfpatch/sovd_web_ui/issues)
 - If you can't find an existing issue, [open a new one](https://github.com/selfpatch/sovd_web_ui/issues/new/choose) and select the **Bug report** template
 - Fill in all sections of the template:
-  - **Steps to reproduce** - numbered steps to recreate the issue
-  - **Expected behavior** - what you expected to happen
-  - **Actual behavior** - what actually happened, including error messages or stack traces
-  - **Environment** - sovd_web_ui version, browser, OS
-  - **Additional information** - logs, snippets, or screenshots if helpful
+    - **Steps to reproduce** - numbered steps to recreate the issue
+    - **Expected behavior** - what you expected to happen
+    - **Actual behavior** - what actually happened, including error messages or stack traces
+    - **Environment** - sovd_web_ui version, browser, OS
+    - **Additional information** - logs, snippets, or screenshots if helpful
 
 ### Do you want to suggest a feature or improvement?
 
 - Check if the feature has already been suggested in [Issues](https://github.com/selfpatch/sovd_web_ui/issues)
 - If not, [open a new issue](https://github.com/selfpatch/sovd_web_ui/issues/new/choose) and select the **Feature request / General issue** template
 - Fill in all sections:
-  - **Proposal** - describe the change or feature you'd like to see
-  - **Motivation** - why is this important? Who does it benefit?
-  - **Alternatives considered** - other options or implementations you considered
-  - **Additional context** - any other context or screenshots
+    - **Proposal** - describe the change or feature you'd like to see
+    - **Motivation** - why is this important? Who does it benefit?
+    - **Alternatives considered** - other options or implementations you considered
+    - **Additional context** - any other context or screenshots
 
 ## How to Contribute Code
 
@@ -31,9 +31,9 @@ Thanks for your interest in contributing to sovd_web_ui! This guide explains how
 
 1. **Fork the repository** and clone your fork locally
 2. **Create a branch** from `main` with a descriptive name:
-   - `feature/short-description` for new features
-   - `fix/short-description` for bug fixes
-   - `docs/short-description` for documentation changes
+    - `feature/short-description` for new features
+    - `fix/short-description` for bug fixes
+    - `docs/short-description` for documentation changes
 3. **Install dependencies**: `npm install`
 4. **Make your changes** following the project's coding standards
 5. **Test your changes** locally: `npm run dev`
@@ -51,6 +51,7 @@ Thanks for your interest in contributing to sovd_web_ui! This guide explains how
 - Add a blank line followed by a more detailed explanation if needed
 
 Examples:
+
 ```
 Add server connection dialog with URL validation
 
@@ -64,24 +65,27 @@ Update documentation for Docker deployment
 Before opening or updating a Pull Request, you **must**:
 
 1. Install dependencies:
-   ```bash
-   npm install
-   ```
+
+    ```bash
+    npm install
+    ```
 
 2. Run linting:
-   ```bash
-   npm run lint
-   ```
+
+    ```bash
+    npm run lint
+    ```
 
 3. Build the project successfully:
-   ```bash
-   npm run build
-   ```
+
+    ```bash
+    npm run build
+    ```
 
 4. Ensure the app works locally:
-   ```bash
-   npm run dev
-   ```
+    ```bash
+    npm run dev
+    ```
 
 ### Pull Request Checklist
 

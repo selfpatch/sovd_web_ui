@@ -70,6 +70,27 @@ npm run build
 
 # Preview production build
 npm run preview
+
+# Run tests
+npm test
+
+# Run tests with UI
+npm run test:ui
+
+# Run tests with coverage
+npm run test:coverage
+
+# Format code
+npm run format
+
+# Check formatting
+npm run format:check
+
+# Type check
+npm run typecheck
+
+# Lint code
+npm run lint
 ```
 
 ## Usage
@@ -89,6 +110,9 @@ npm run preview
 - **shadcn/ui** - UI components
 - **Zustand** - State management
 - **lucide-react** - Icons
+- **Vitest** - Testing framework
+- **Prettier** - Code formatting
+- **Husky** - Git hooks
 
 ## Contributing
 
