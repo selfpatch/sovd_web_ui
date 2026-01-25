@@ -1,7 +1,7 @@
 # sovd_web_ui
 
 [![CI](https://github.com/selfpatch/sovd_web_ui/actions/workflows/ci.yml/badge.svg)](https://github.com/selfpatch/sovd_web_ui/actions/workflows/ci.yml)
-[![Docker Hub](https://img.shields.io/docker/v/bburda/sovd_web_ui?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/bburda/sovd_web_ui)
+[![GHCR](https://img.shields.io/badge/GHCR-ghcr.io%2Fselfpatch%2Fsovd__web__ui-blue?logo=github)](https://github.com/selfpatch/sovd_web_ui/pkgs/container/sovd_web_ui)
 
 Simple, open-source web UI for browsing SOVD (Service-Oriented Vehicle Diagnostics) entity trees via discovery endpoints.
 
@@ -34,9 +34,9 @@ This tool is designed for developers and integrators working with SOVD-compatibl
 ### Using Docker
 
 ```bash
-# Pull from Docker Hub
-docker pull bburda/sovd_web_ui:latest
-docker run -p 8080:80 bburda/sovd_web_ui:latest
+# Pull from GitHub Container Registry
+docker pull ghcr.io/selfpatch/sovd_web_ui:latest
+docker run -p 8080:80 ghcr.io/selfpatch/sovd_web_ui:latest
 
 # Or build locally
 docker build -t sovd_web_ui .
@@ -47,7 +47,7 @@ Then open http://localhost:8080 in your browser.
 
 #### Docker Image Tags
 
-Docker images are automatically published to Docker Hub via GitHub Actions:
+Docker images are automatically published to GitHub Container Registry via GitHub Actions:
 
 | Trigger | Image Tags |
 |---------|------------|
