@@ -38,7 +38,7 @@ interface OperationHistoryEntry {
     id: string;
     timestamp: Date;
     response: OperationResponse;
-    goalId?: string;
+    executionId?: string;
 }
 
 interface OperationsPanelProps {
@@ -128,7 +128,7 @@ function OperationRow({
 
     // Get latest entry for action status monitoring
     const latestEntry = history[0];
-    const latestGoalId = latestEntry?.goalId;
+    const latestExecutionId = latestEntry?.executionId;
 
     // Initialize form data with schema defaults
     useEffect(() => {
@@ -190,7 +190,8 @@ function OperationRow({
                     id: crypto.randomUUID(),
                     timestamp: new Date(),
                     response,
-                    goalId: response.kind === 'action' && response.status === 'success' ? response.goal_id : undefined,
+                    executionId:
+                        response.kind === 'action' && response.status === 'success' ? response.execution_id : undefined,
                 };
                 setHistory((prev) => [entry, ...prev.slice(0, 9)]);
             }
@@ -352,11 +353,11 @@ function OperationRow({
                         )}
 
                         {/* Action status monitoring for latest action */}
-                        {latestGoalId && operation.kind === 'action' && (
+                        {latestExecutionId && operation.kind === 'action' && (
                             <ActionStatusPanel
                                 componentId={componentId}
                                 operationName={operation.name}
-                                goalId={latestGoalId}
+                                executionId={latestExecutionId}
                             />
                         )}
 
@@ -426,12 +427,12 @@ function OperationRow({
 }
 
 export function OperationsPanel({ componentId, highlightOperation }: OperationsPanelProps) {
-    const { operations, isLoadingOperations, fetchOperations, invokeOperation } = useAppStore(
+    const { operations, isLoadingOperations, fetchOperations, createExecution } = useAppStore(
         useShallow((state: AppState) => ({
             operations: state.operations,
             isLoadingOperations: state.isLoadingOperations,
             fetchOperations: state.fetchOperations,
-            invokeOperation: state.invokeOperation,
+            createExecution: state.createExecution,
         }))
     );
 
@@ -452,9 +453,9 @@ export function OperationsPanel({ componentId, highlightOperation }: OperationsP
 
     const handleInvoke = useCallback(
         async (opName: string, payload: unknown) => {
-            return invokeOperation(componentId, opName, payload as Parameters<typeof invokeOperation>[2]);
+            return createExecution(componentId, opName, payload as Parameters<typeof createExecution>[2]);
         },
-        [componentId, invokeOperation]
+        [componentId, createExecution]
     );
 
     if (isLoadingOperations && componentOperations.length === 0) {

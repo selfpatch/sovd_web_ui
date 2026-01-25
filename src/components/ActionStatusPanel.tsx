@@ -5,39 +5,32 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAppStore, type AppState } from '@/lib/store';
-import type { ActionGoalStatusValue } from '@/lib/types';
+import type { ExecutionStatus } from '@/lib/types';
 
 interface ActionStatusPanelProps {
     componentId: string;
     operationName: string;
-    goalId: string;
+    executionId: string;
 }
 
 /**
- * Get status badge variant and icon
+ * Get status badge variant and icon for Execution status
  */
-function getStatusStyle(status: ActionGoalStatusValue): {
+function getStatusStyle(status: ExecutionStatus): {
     variant: 'default' | 'secondary' | 'destructive' | 'outline';
     icon: typeof CheckCircle;
     color: string;
     bgColor: string;
 } {
     switch (status) {
-        case 'accepted':
+        case 'pending':
             return { variant: 'outline', icon: Clock, color: 'text-blue-500', bgColor: 'bg-blue-500/10' };
-        case 'executing':
+        case 'running':
             return {
                 variant: 'default',
                 icon: Activity,
                 color: 'text-blue-500',
                 bgColor: 'bg-blue-500/10',
-            };
-        case 'canceling':
-            return {
-                variant: 'secondary',
-                icon: XCircle,
-                color: 'text-yellow-500',
-                bgColor: 'bg-yellow-500/10',
             };
         case 'succeeded':
             return {
@@ -53,7 +46,7 @@ function getStatusStyle(status: ActionGoalStatusValue): {
                 color: 'text-gray-500',
                 bgColor: 'bg-gray-500/10',
             };
-        case 'aborted':
+        case 'failed':
             return {
                 variant: 'destructive',
                 icon: AlertCircle,
@@ -73,64 +66,70 @@ function getStatusStyle(status: ActionGoalStatusValue): {
 /**
  * Check if status is terminal (no more updates expected)
  */
-function isTerminalStatus(status: ActionGoalStatusValue): boolean {
-    return ['succeeded', 'canceled', 'aborted'].includes(status);
+function isTerminalStatus(status: ExecutionStatus): boolean {
+    return ['succeeded', 'canceled', 'failed'].includes(status);
 }
 
 /**
  * Check if status is active (action is in progress)
  */
-function isActiveStatus(status: ActionGoalStatusValue): boolean {
-    return ['accepted', 'executing', 'canceling'].includes(status);
+function isActiveStatus(status: ExecutionStatus): boolean {
+    return ['pending', 'running'].includes(status);
 }
 
-export function ActionStatusPanel({ componentId, operationName, goalId }: ActionStatusPanelProps) {
-    const { activeGoals, autoRefreshGoals, refreshActionStatus, cancelActionGoal, setAutoRefreshGoals } = useAppStore(
+export function ActionStatusPanel({ componentId, operationName, executionId }: ActionStatusPanelProps) {
+    const {
+        activeExecutions,
+        autoRefreshExecutions,
+        refreshExecutionStatus,
+        cancelExecution,
+        setAutoRefreshExecutions,
+    } = useAppStore(
         useShallow((state: AppState) => ({
-            activeGoals: state.activeGoals,
-            autoRefreshGoals: state.autoRefreshGoals,
-            refreshActionStatus: state.refreshActionStatus,
-            cancelActionGoal: state.cancelActionGoal,
-            setAutoRefreshGoals: state.setAutoRefreshGoals,
+            activeExecutions: state.activeExecutions,
+            autoRefreshExecutions: state.autoRefreshExecutions,
+            refreshExecutionStatus: state.refreshExecutionStatus,
+            cancelExecution: state.cancelExecution,
+            setAutoRefreshExecutions: state.setAutoRefreshExecutions,
         }))
     );
 
-    const goalStatus = activeGoals.get(goalId);
-    const statusStyle = goalStatus ? getStatusStyle(goalStatus.status) : null;
+    const execution = activeExecutions.get(executionId);
+    const statusStyle = execution ? getStatusStyle(execution.status) : null;
     const StatusIcon = statusStyle?.icon || Clock;
-    const isTerminal = goalStatus ? isTerminalStatus(goalStatus.status) : false;
-    const isActive = goalStatus ? isActiveStatus(goalStatus.status) : false;
-    const canCancel = goalStatus && ['accepted', 'executing'].includes(goalStatus.status);
+    const isTerminal = execution ? isTerminalStatus(execution.status) : false;
+    const isActive = execution ? isActiveStatus(execution.status) : false;
+    const canCancel = execution && ['pending', 'running'].includes(execution.status);
 
     // Manual refresh
     const handleRefresh = useCallback(() => {
-        refreshActionStatus(componentId, operationName, goalId);
-    }, [componentId, operationName, goalId, refreshActionStatus]);
+        refreshExecutionStatus(componentId, operationName, executionId);
+    }, [componentId, operationName, executionId, refreshExecutionStatus]);
 
     // Cancel action
     const handleCancel = useCallback(async () => {
-        await cancelActionGoal(componentId, operationName, goalId);
-    }, [componentId, operationName, goalId, cancelActionGoal]);
+        await cancelExecution(componentId, operationName, executionId);
+    }, [componentId, operationName, executionId, cancelExecution]);
 
     // Auto-refresh effect
     useEffect(() => {
-        if (!autoRefreshGoals || isTerminal) return;
+        if (!autoRefreshExecutions || isTerminal) return;
 
         const interval = setInterval(() => {
-            refreshActionStatus(componentId, operationName, goalId);
+            refreshExecutionStatus(componentId, operationName, executionId);
         }, 1000); // Refresh every second
 
         return () => clearInterval(interval);
-    }, [autoRefreshGoals, isTerminal, componentId, operationName, goalId, refreshActionStatus]);
+    }, [autoRefreshExecutions, isTerminal, componentId, operationName, executionId, refreshExecutionStatus]);
 
     // Initial fetch
     useEffect(() => {
-        if (!goalStatus) {
-            refreshActionStatus(componentId, operationName, goalId);
+        if (!execution) {
+            refreshExecutionStatus(componentId, operationName, executionId);
         }
-    }, [goalId, goalStatus, componentId, operationName, refreshActionStatus]);
+    }, [executionId, execution, componentId, operationName, refreshExecutionStatus]);
 
-    if (!goalStatus) {
+    if (!execution) {
         return (
             <div className="flex items-center justify-center p-4">
                 <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
@@ -146,35 +145,35 @@ export function ActionStatusPanel({ componentId, operationName, goalId }: Action
                         {isActive ? (
                             <div className="relative">
                                 <StatusIcon
-                                    className={`w-4 h-4 ${statusStyle?.color} ${goalStatus.status === 'executing' ? 'animate-pulse' : ''}`}
+                                    className={`w-4 h-4 ${statusStyle?.color} ${execution.status === 'running' ? 'animate-pulse' : ''}`}
                                 />
-                                {goalStatus.status === 'executing' && (
+                                {execution.status === 'running' && (
                                     <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-500 rounded-full animate-ping" />
                                 )}
                             </div>
                         ) : (
                             <StatusIcon className={`w-4 h-4 ${statusStyle?.color}`} />
                         )}
-                        <CardTitle className="text-sm">Action Status</CardTitle>
+                        <CardTitle className="text-sm">Execution Status</CardTitle>
                         <Badge variant={statusStyle?.variant} className={isActive ? 'animate-pulse' : ''}>
-                            {goalStatus.status}
+                            {execution.status}
                         </Badge>
                     </div>
 
                     <div className="flex items-center gap-2">
                         {/* Auto-refresh checkbox */}
                         <label
-                            htmlFor={`auto-refresh-${goalId}`}
+                            htmlFor={`auto-refresh-${executionId}`}
                             className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer"
                         >
                             <input
-                                id={`auto-refresh-${goalId}`}
+                                id={`auto-refresh-${executionId}`}
                                 type="checkbox"
-                                checked={autoRefreshGoals}
-                                onChange={(e) => setAutoRefreshGoals(e.target.checked)}
+                                checked={autoRefreshExecutions}
+                                onChange={(e) => setAutoRefreshExecutions(e.target.checked)}
                                 className="rounded border-muted-foreground focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
                                 disabled={isTerminal}
-                                aria-label="Auto-refresh action status"
+                                aria-label="Auto-refresh execution status"
                             />
                             Auto-refresh
                         </label>
@@ -188,7 +187,7 @@ export function ActionStatusPanel({ componentId, operationName, goalId }: Action
                             className="h-7 w-7 p-0"
                         >
                             <RefreshCw
-                                className={`w-3.5 h-3.5 ${isActive && autoRefreshGoals ? 'animate-spin' : ''}`}
+                                className={`w-3.5 h-3.5 ${isActive && autoRefreshExecutions ? 'animate-spin' : ''}`}
                             />
                         </Button>
 
@@ -210,9 +209,8 @@ export function ActionStatusPanel({ componentId, operationName, goalId }: Action
                         <div className="flex items-center gap-2">
                             <Navigation className="w-3.5 h-3.5 text-blue-500 animate-bounce" />
                             <span className="text-xs text-muted-foreground">
-                                {goalStatus.status === 'accepted' && 'Waiting to start...'}
-                                {goalStatus.status === 'executing' && 'Action in progress...'}
-                                {goalStatus.status === 'canceling' && 'Canceling...'}
+                                {execution.status === 'pending' && 'Waiting to start...'}
+                                {execution.status === 'running' && 'Execution in progress...'}
                             </span>
                         </div>
                         {/* Animated progress bar */}
@@ -222,22 +220,32 @@ export function ActionStatusPanel({ componentId, operationName, goalId }: Action
                     </div>
                 )}
 
-                {/* Goal ID */}
+                {/* Execution ID */}
                 <div className="flex items-center gap-2 text-xs">
-                    <span className="text-muted-foreground">Goal ID:</span>
+                    <span className="text-muted-foreground">Execution ID:</span>
                     <code className="bg-background/50 px-1.5 py-0.5 rounded font-mono text-xs">
-                        {goalId.slice(0, 8)}...{goalId.slice(-8)}
+                        {executionId.slice(0, 8)}...{executionId.slice(-8)}
                     </code>
                 </div>
 
-                {/* Feedback */}
-                {goalStatus.last_feedback !== undefined && goalStatus.last_feedback !== null && (
+                {/* Result or feedback */}
+                {execution.result !== undefined && execution.result !== null && (
                     <div>
                         <span className="text-xs text-muted-foreground block mb-1">
                             {isTerminal ? 'Result:' : 'Last Feedback:'}
                         </span>
                         <pre className="bg-background/50 p-2 rounded text-xs font-mono overflow-auto max-h-[150px]">
-                            {JSON.stringify(goalStatus.last_feedback, null, 2)}
+                            {JSON.stringify(execution.result, null, 2)}
+                        </pre>
+                    </div>
+                )}
+
+                {/* Error message for failed executions */}
+                {execution.error && (
+                    <div>
+                        <span className="text-xs text-destructive block mb-1">Error:</span>
+                        <pre className="bg-destructive/10 p-2 rounded text-xs font-mono text-destructive overflow-auto max-h-[100px]">
+                            {execution.error}
                         </pre>
                     </div>
                 )}
@@ -247,9 +255,9 @@ export function ActionStatusPanel({ componentId, operationName, goalId }: Action
                     <div className={`text-xs ${statusStyle?.color} flex items-center gap-1.5 font-medium`}>
                         <StatusIcon className="w-4 h-4" />
                         <span>
-                            {goalStatus.status === 'succeeded' && 'Action completed successfully'}
-                            {goalStatus.status === 'canceled' && 'Action was canceled'}
-                            {goalStatus.status === 'aborted' && 'Action was aborted due to an error'}
+                            {execution.status === 'succeeded' && 'Execution completed successfully'}
+                            {execution.status === 'canceled' && 'Execution was canceled'}
+                            {execution.status === 'failed' && 'Execution failed'}
                         </span>
                     </div>
                 )}
