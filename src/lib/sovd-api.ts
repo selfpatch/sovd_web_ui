@@ -156,7 +156,7 @@ export class SovdApiClient {
 
         // Level 1: /area -> fetch components
         if (parts.length === 1) {
-            const areaId = parts[0];
+            const areaId = parts[0]!;
             const response = await fetchWithTimeout(this.getUrl(`areas/${areaId}/components`), {
                 method: 'GET',
                 headers: { Accept: 'application/json' },
@@ -185,7 +185,7 @@ export class SovdApiClient {
         // Level 2: /area/component -> fetch full topic data with QoS, publishers, subscribers
         // This fetches actual topic samples which include rich metadata
         if (parts.length === 2) {
-            const componentId = parts[1];
+            const componentId = parts[1]!;
             const response = await fetchWithTimeout(this.getUrl(`components/${componentId}/data`), {
                 method: 'GET',
                 headers: { Accept: 'application/json' },
