@@ -366,6 +366,7 @@ export const useAppStore = create<AppState>()(
                     set({ rootEntities: treeNodes });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
+                    console.error('[DEBUG] Failed to load entities:', error);
                     toast.error(`Failed to load entities: ${message}`);
                 }
             },
@@ -508,6 +509,7 @@ export const useAppStore = create<AppState>()(
                         });
                     } catch (error) {
                         const message = error instanceof Error ? error.message : 'Unknown error';
+                        console.error(`[DEBUG] Failed to load ${folderData.folderType}:`, error);
                         // Don't show error for empty results - some components may not have operations/configs
                         if (!message.includes('not found')) {
                             toast.error(`Failed to load ${folderData.folderType}: ${message}`);
@@ -564,6 +566,7 @@ export const useAppStore = create<AppState>()(
                     });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
+                    console.error(`[DEBUG] Failed to load children for ${path}:`, error);
                     toast.error(`Failed to load children for ${path}: ${message}`);
                     set({ loadingPaths: get().loadingPaths.filter((p) => p !== path) });
                 }
@@ -648,6 +651,7 @@ export const useAppStore = create<AppState>()(
                             set({ selectedEntity: details, isLoadingDetails: false });
                         } catch (error) {
                             const message = error instanceof Error ? error.message : 'Unknown error';
+                            console.error('[DEBUG] Failed to load topic details:', error);
                             toast.error(`Failed to load topic details: ${message}`);
                             set({
                                 selectedEntity: {
@@ -821,6 +825,7 @@ export const useAppStore = create<AppState>()(
                     set({ selectedEntity: details, isLoadingDetails: false });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
+                    console.error(`[DEBUG] Failed to load entity details for ${path}:`, error);
                     toast.error(`Failed to load entity details for ${path}: ${message}`);
 
                     // Set fallback entity to allow panel to render
@@ -861,7 +866,8 @@ export const useAppStore = create<AppState>()(
                 try {
                     const details = await client.getEntityDetails(selectedPath);
                     set({ selectedEntity: details, isRefreshing: false });
-                } catch {
+                } catch (error) {
+                    console.error('[DEBUG] Failed to refresh data:', error);
                     toast.error('Failed to refresh data');
                     set({ isRefreshing: false });
                 }
@@ -892,6 +898,7 @@ export const useAppStore = create<AppState>()(
                     set({ configurations: newConfigs, isLoadingConfigurations: false });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
+                    console.error('[DEBUG] Failed to load configurations:', error);
                     toast.error(`Failed to load configurations: ${message}`);
                     set({ isLoadingConfigurations: false });
                 }
@@ -904,23 +911,46 @@ export const useAppStore = create<AppState>()(
                 try {
                     const result = await client.setConfiguration(componentId, paramName, { value });
 
-                    if (result.status === 'success') {
+                    // API returns {data: ..., id: ..., x-medkit: {parameter: {...}}}
+                    // Success is indicated by presence of x-medkit.parameter (no status field)
+                    const xMedkit = (result as { 'x-medkit'?: { parameter?: { name: string; value: unknown } } })[
+                        'x-medkit'
+                    ];
+                    const parameter = xMedkit?.parameter;
+
+                    if (parameter) {
                         // Update local state with new value
                         const newConfigs = new Map(configurations);
                         const params = newConfigs.get(componentId) || [];
                         const updatedParams = params.map((p) =>
-                            p.name === paramName ? { ...p, value: result.parameter.value } : p
+                            p.name === paramName ? { ...p, value: parameter.value } : p
+                        );
+                        newConfigs.set(componentId, updatedParams);
+                        set({ configurations: newConfigs });
+                        toast.success(`Parameter ${paramName} updated`);
+                        return true;
+                    } else if ((result as { status?: string }).status === 'success') {
+                        // Legacy format fallback
+                        const legacyResult = result as { parameter: { value: unknown } };
+                        const newConfigs = new Map(configurations);
+                        const params = newConfigs.get(componentId) || [];
+                        const updatedParams = params.map((p) =>
+                            p.name === paramName ? { ...p, value: legacyResult.parameter.value } : p
                         );
                         newConfigs.set(componentId, updatedParams);
                         set({ configurations: newConfigs });
                         toast.success(`Parameter ${paramName} updated`);
                         return true;
                     } else {
-                        toast.error(`Failed to set parameter: ${result.error}`);
+                        console.error('[DEBUG] Failed to set parameter - result:', result);
+                        toast.error(
+                            `Failed to set parameter: ${(result as { error?: string }).error || 'Unknown error'}`
+                        );
                         return false;
                     }
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
+                    console.error('[DEBUG] Failed to set parameter:', error);
                     toast.error(`Failed to set parameter: ${message}`);
                     return false;
                 }
@@ -943,6 +973,7 @@ export const useAppStore = create<AppState>()(
                     return true;
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
+                    console.error('[DEBUG] Failed to reset parameter:', error);
                     toast.error(`Failed to reset parameter: ${message}`);
                     return false;
                 }
@@ -967,6 +998,7 @@ export const useAppStore = create<AppState>()(
                     return { reset_count: result.reset_count, failed_count: result.failed_count };
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
+                    console.error('[DEBUG] Failed to reset configurations:', error);
                     toast.error(`Failed to reset configurations: ${message}`);
                     return { reset_count: 0, failed_count: 0 };
                 }
@@ -989,6 +1021,7 @@ export const useAppStore = create<AppState>()(
                     set({ operations: newOps, isLoadingOperations: false });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
+                    console.error('[DEBUG] Failed to load operations:', error);
                     toast.error(`Failed to load operations: ${message}`);
                     set({ isLoadingOperations: false });
                 }
@@ -1015,12 +1048,14 @@ export const useAppStore = create<AppState>()(
                     } else if (result.kind === 'service' && !result.error) {
                         toast.success(`Service ${operationName} executed successfully`);
                     } else if (result.error) {
+                        console.error('[DEBUG] Operation result error:', result);
                         toast.error(`Operation failed: ${result.error}`);
                     }
 
                     return result;
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
+                    console.error('[DEBUG] Operation execution failed:', error);
                     toast.error(`Operation failed: ${message}`);
                     return null;
                 }
@@ -1037,6 +1072,7 @@ export const useAppStore = create<AppState>()(
                     set({ activeExecutions: newExecutions });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
+                    console.error('[DEBUG] Failed to refresh execution status:', error);
                     toast.error(`Failed to refresh execution status: ${message}`);
                 }
             },
@@ -1054,6 +1090,7 @@ export const useAppStore = create<AppState>()(
                     return true;
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
+                    console.error('[DEBUG] Failed to cancel execution:', error);
                     toast.error(`Failed to cancel execution: ${message}`);
                     return false;
                 }
@@ -1078,6 +1115,7 @@ export const useAppStore = create<AppState>()(
                     set({ faults: result.items, isLoadingFaults: false });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
+                    console.error('[DEBUG] Failed to load faults:', error);
                     toast.error(`Failed to load faults: ${message}`);
                     set({ isLoadingFaults: false });
                 }
@@ -1095,6 +1133,7 @@ export const useAppStore = create<AppState>()(
                     return true;
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
+                    console.error('[DEBUG] Failed to clear fault:', error);
                     toast.error(`Failed to clear fault: ${message}`);
                     return false;
                 }
