@@ -394,10 +394,7 @@ export const useAppStore = create<AppState>()(
                     // Full ComponentTopic has 'type' field (e.g., "sensor_msgs/msg/Temperature")
                     const firstChild = node.children[0];
                     const hasFullData =
-                        firstChild &&
-                        firstChild.data &&
-                        typeof firstChild.data === 'object' &&
-                        'type' in (firstChild.data as object);
+                        firstChild?.data && typeof firstChild.data === 'object' && 'type' in firstChild.data;
 
                     if (hasFullData) {
                         // Already have full data, skip fetch
@@ -588,7 +585,7 @@ export const useAppStore = create<AppState>()(
                 if (node && node.type === 'parameter' && node.data) {
                     // Extract componentId from path: /area/component/configurations/paramName
                     const pathSegments = path.split('/').filter(Boolean);
-                    const componentId = pathSegments.length >= 2 ? pathSegments[1] : pathSegments[0];
+                    const componentId = (pathSegments.length >= 2 ? pathSegments[1] : pathSegments[0]) ?? '';
 
                     set({
                         selectedPath: path,
@@ -609,7 +606,7 @@ export const useAppStore = create<AppState>()(
                 if (node && (node.type === 'service' || node.type === 'action') && node.data) {
                     // Extract componentId from path: /area/component/operations/opName
                     const pathSegments = path.split('/').filter(Boolean);
-                    const componentId = pathSegments.length >= 2 ? pathSegments[1] : pathSegments[0];
+                    const componentId = (pathSegments.length >= 2 ? pathSegments[1] : pathSegments[0]) ?? '';
 
                     set({
                         selectedPath: path,
