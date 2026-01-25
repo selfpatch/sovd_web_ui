@@ -29,6 +29,18 @@ import type {
 } from './types';
 
 /**
+ * Helper to unwrap items from SOVD API response
+ * API returns {items: [...]} format, but we often want just the array
+ */
+function unwrapItems<T>(response: unknown): T[] {
+    if (Array.isArray(response)) {
+        return response as T[];
+    }
+    const wrapped = response as { items?: T[] };
+    return wrapped.items ?? [];
+}
+
+/**
  * Timeout wrapper for fetch requests.
  * Default timeout is 10 seconds to accommodate slower connections and large topic data responses.
  */
@@ -209,7 +221,7 @@ export class SovdApiClient {
             });
 
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const topics = (await response.json()) as ComponentTopic[];
+            const topics = unwrapItems<ComponentTopic>(await response.json());
 
             // Return entities with FULL ComponentTopic data preserved
             // This includes: type, type_info, publishers, subscribers, QoS, etc.
@@ -316,7 +328,7 @@ export class SovdApiClient {
             });
 
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const topicsData = (await response.json()) as ComponentTopic[];
+            const topicsData = unwrapItems<ComponentTopic>(await response.json());
 
             // Build topicsInfo from fetched data for navigation
             // AND keep full topics array for detailed view (QoS, publishers, etc.)
@@ -441,7 +453,15 @@ export class SovdApiClient {
             throw new Error(errorData.error || errorData.details || `HTTP ${response.status}`);
         }
 
-        return await response.json();
+        const data = await response.json();
+        // API returns {items: [...], x-medkit: {parameters: [...]}}
+        // Transform to ComponentConfigurations format
+        const xMedkit = data['x-medkit'] || {};
+        return {
+            component_id: xMedkit.entity_id || componentId,
+            node_name: xMedkit.ros2?.node || componentId,
+            parameters: xMedkit.parameters || [],
+        };
     }
 
     /**
@@ -576,7 +596,7 @@ export class SovdApiClient {
             throw new Error(`HTTP ${response.status}`);
         }
 
-        return await response.json();
+        return unwrapItems<Operation>(await response.json());
     }
 
     /**
@@ -746,7 +766,39 @@ export class SovdApiClient {
             throw new Error(`HTTP ${response.status}`);
         }
 
-        return await response.json();
+        interface ApiAppResponse {
+            id: string;
+            name: string;
+            href?: string;
+            'x-medkit'?: {
+                component_id?: string;
+                is_online?: boolean;
+                ros2?: { node?: string };
+                source?: string;
+            };
+        }
+
+        const items = unwrapItems<ApiAppResponse>(await response.json());
+        // Transform API response to App interface by extracting x-medkit fields
+        return items.map((item) => {
+            const xMedkit = item['x-medkit'] || {};
+            const nodePath = xMedkit.ros2?.node || `/${item.name}`;
+            const lastSlash = nodePath.lastIndexOf('/');
+            const namespace = lastSlash > 0 ? nodePath.substring(0, lastSlash) : '/';
+            const nodeName = lastSlash >= 0 ? nodePath.substring(lastSlash + 1) : item.name;
+
+            return {
+                id: item.id,
+                name: item.name,
+                href: item.href || `/api/v1/apps/${item.id}`,
+                type: 'app',
+                hasChildren: true,
+                node_name: nodeName,
+                namespace: namespace,
+                fqn: nodePath,
+                component_id: xMedkit.component_id,
+            };
+        });
     }
 
     /**
@@ -781,7 +833,7 @@ export class SovdApiClient {
             throw new Error(`HTTP ${response.status}`);
         }
 
-        return await response.json();
+        return unwrapItems<ComponentTopic>(await response.json());
     }
 
     /**
@@ -864,7 +916,7 @@ export class SovdApiClient {
             throw new Error(`HTTP ${response.status}`);
         }
 
-        return await response.json();
+        return unwrapItems<Function>(await response.json());
     }
 
     /**
@@ -917,7 +969,7 @@ export class SovdApiClient {
             return [];
         }
 
-        return await response.json();
+        return unwrapItems<ComponentTopic>(await response.json());
     }
 
     /**
@@ -934,7 +986,7 @@ export class SovdApiClient {
             return [];
         }
 
-        return await response.json();
+        return unwrapItems<Operation>(await response.json());
     }
 
     // ===========================================================================
