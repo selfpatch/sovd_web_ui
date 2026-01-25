@@ -54,7 +54,7 @@ Docker images are automatically published to Docker Hub via GitHub Actions:
 | Push/merge to `main` | `latest`, `sha-<commit>` |
 | Git tag `v1.2.3` | `1.2.3`, `1.2`, `1`, `sha-<commit>` |
 
-Images are built for both `linux/amd64` and `linux/arm64` platforms.
+> **Note:** Images are currently built for `linux/amd64` only. ARM64 support is planned.
 
 ### Development
 
