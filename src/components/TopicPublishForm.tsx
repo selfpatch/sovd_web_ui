@@ -73,9 +73,10 @@ export function TopicPublishForm({ topic, componentId, client, initialValue, onV
     // Note: We intentionally only depend on topic.topic (the topic path) to reset on topic change.
     // Other topic properties (data, type_info) may change frequently without requiring a form reset.
     useEffect(() => {
-        const initial = initialValue && typeof initialValue === 'object'
-            ? initialValue as Record<string, unknown>
-            : getInitialValues(topic);
+        const initial =
+            initialValue && typeof initialValue === 'object'
+                ? (initialValue as Record<string, unknown>)
+                : getInitialValues(topic);
         setFormValues(initial);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [topic.topic]);
@@ -130,7 +131,7 @@ export function TopicPublishForm({ topic, componentId, client, initialValue, onV
         // Extract topic name - remove leading slash and component namespace prefix
         // Full topic path example: "/powertrain/engine/temperature"
         // We need just the last segment for the API: "temperature"
-        const topicSegments = topic.topic.split('/').filter(s => s);
+        const topicSegments = topic.topic.split('/').filter((s) => s);
         const topicName = topicSegments[topicSegments.length - 1] || topic.topic;
 
         // Validate and get data to publish
@@ -218,11 +219,7 @@ export function TopicPublishForm({ topic, componentId, client, initialValue, onV
                         <Code className="h-3 w-3 mr-1" />
                         JSON
                     </Button>
-                    {topic.type && (
-                        <span className="text-xs text-muted-foreground ml-auto">
-                            {topic.type}
-                        </span>
-                    )}
+                    {topic.type && <span className="text-xs text-muted-foreground ml-auto">{topic.type}</span>}
                 </div>
             )}
 
@@ -245,12 +242,7 @@ export function TopicPublishForm({ topic, componentId, client, initialValue, onV
             )}
 
             {/* Publish button */}
-            <Button
-                onClick={handlePublish}
-                disabled={isPublishing}
-                size="sm"
-                className="w-full"
-            >
+            <Button onClick={handlePublish} disabled={isPublishing} size="sm" className="w-full">
                 {isPublishing ? (
                     <>
                         <Loader2 className="w-3 h-3 mr-2 animate-spin" />

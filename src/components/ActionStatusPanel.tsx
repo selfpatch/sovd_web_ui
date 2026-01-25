@@ -26,17 +26,47 @@ function getStatusStyle(status: ActionGoalStatusValue): {
         case 'accepted':
             return { variant: 'outline', icon: Clock, color: 'text-blue-500', bgColor: 'bg-blue-500/10' };
         case 'executing':
-            return { variant: 'default', icon: Activity, color: 'text-blue-500', bgColor: 'bg-blue-500/10' };
+            return {
+                variant: 'default',
+                icon: Activity,
+                color: 'text-blue-500',
+                bgColor: 'bg-blue-500/10',
+            };
         case 'canceling':
-            return { variant: 'secondary', icon: XCircle, color: 'text-yellow-500', bgColor: 'bg-yellow-500/10' };
+            return {
+                variant: 'secondary',
+                icon: XCircle,
+                color: 'text-yellow-500',
+                bgColor: 'bg-yellow-500/10',
+            };
         case 'succeeded':
-            return { variant: 'default', icon: CheckCircle, color: 'text-green-500', bgColor: 'bg-green-500/10' };
+            return {
+                variant: 'default',
+                icon: CheckCircle,
+                color: 'text-green-500',
+                bgColor: 'bg-green-500/10',
+            };
         case 'canceled':
-            return { variant: 'secondary', icon: XCircle, color: 'text-gray-500', bgColor: 'bg-gray-500/10' };
+            return {
+                variant: 'secondary',
+                icon: XCircle,
+                color: 'text-gray-500',
+                bgColor: 'bg-gray-500/10',
+            };
         case 'aborted':
-            return { variant: 'destructive', icon: AlertCircle, color: 'text-red-500', bgColor: 'bg-red-500/10' };
+            return {
+                variant: 'destructive',
+                icon: AlertCircle,
+                color: 'text-red-500',
+                bgColor: 'bg-red-500/10',
+            };
         default:
-            return { variant: 'outline', icon: Clock, color: 'text-muted-foreground', bgColor: 'bg-muted' };
+            return {
+                variant: 'outline',
+                icon: Clock,
+                color: 'text-muted-foreground',
+                bgColor: 'bg-muted',
+            };
     }
 }
 
@@ -55,13 +85,7 @@ function isActiveStatus(status: ActionGoalStatusValue): boolean {
 }
 
 export function ActionStatusPanel({ componentId, operationName, goalId }: ActionStatusPanelProps) {
-    const {
-        activeGoals,
-        autoRefreshGoals,
-        refreshActionStatus,
-        cancelActionGoal,
-        setAutoRefreshGoals,
-    } = useAppStore(
+    const { activeGoals, autoRefreshGoals, refreshActionStatus, cancelActionGoal, setAutoRefreshGoals } = useAppStore(
         useShallow((state: AppState) => ({
             activeGoals: state.activeGoals,
             autoRefreshGoals: state.autoRefreshGoals,
@@ -121,7 +145,9 @@ export function ActionStatusPanel({ componentId, operationName, goalId }: Action
                     <div className="flex items-center gap-2">
                         {isActive ? (
                             <div className="relative">
-                                <StatusIcon className={`w-4 h-4 ${statusStyle?.color} ${goalStatus.status === 'executing' ? 'animate-pulse' : ''}`} />
+                                <StatusIcon
+                                    className={`w-4 h-4 ${statusStyle?.color} ${goalStatus.status === 'executing' ? 'animate-pulse' : ''}`}
+                                />
                                 {goalStatus.status === 'executing' && (
                                     <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-500 rounded-full animate-ping" />
                                 )}
@@ -161,17 +187,14 @@ export function ActionStatusPanel({ componentId, operationName, goalId }: Action
                             disabled={isTerminal}
                             className="h-7 w-7 p-0"
                         >
-                            <RefreshCw className={`w-3.5 h-3.5 ${isActive && autoRefreshGoals ? 'animate-spin' : ''}`} />
+                            <RefreshCw
+                                className={`w-3.5 h-3.5 ${isActive && autoRefreshGoals ? 'animate-spin' : ''}`}
+                            />
                         </Button>
 
                         {/* Cancel button */}
                         {canCancel && (
-                            <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={handleCancel}
-                                className="h-7"
-                            >
+                            <Button variant="destructive" size="sm" onClick={handleCancel} className="h-7">
                                 <XCircle className="w-3.5 h-3.5 mr-1" />
                                 Cancel
                             </Button>

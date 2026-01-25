@@ -36,9 +36,7 @@ function NumericField({ name, schemaType, value, onChange, indent }: NumericFiel
     const isUnsigned = schemaType.startsWith('uint') || schemaType === 'byte';
 
     // Track raw input for better UX (allow typing "-" without immediate reset)
-    const [rawInput, setRawInput] = useState<string>(
-        value === undefined || value === null ? '0' : String(value)
-    );
+    const [rawInput, setRawInput] = useState<string>(value === undefined || value === null ? '0' : String(value));
 
     // Sync rawInput when value prop changes externally (e.g., parent resets form)
     // Note: rawInput is intentionally omitted from dependencies to avoid infinite loops.
@@ -133,13 +131,7 @@ export function SchemaFormField({ name, schema, value, onChange, depth = 0 }: Sc
                     </Button>
                     <span className="text-sm font-medium">{name}</span>
                     <span className="text-xs text-muted-foreground">array[{arrayValue.length}]</span>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-6 px-2"
-                        onClick={addItem}
-                    >
+                    <Button type="button" variant="outline" size="sm" className="h-6 px-2" onClick={addItem}>
                         <Plus className="h-3 w-3 mr-1" />
                         Add
                     </Button>
@@ -147,7 +139,10 @@ export function SchemaFormField({ name, schema, value, onChange, depth = 0 }: Sc
                 {isExpanded && (
                     <div className="pl-4 border-l border-muted space-y-2">
                         {arrayValue.map((item, index) => (
-                            <div key={`${index}-${JSON.stringify(item).slice(0, 32)}`} className="flex items-start gap-2">
+                            <div
+                                key={`${index}-${JSON.stringify(item).slice(0, 32)}`}
+                                className="flex items-start gap-2"
+                            >
                                 <SchemaFormField
                                     name={`[${index}]`}
                                     schema={schema.items!}
@@ -174,7 +169,7 @@ export function SchemaFormField({ name, schema, value, onChange, depth = 0 }: Sc
 
     // Handle nested object types (has fields property)
     if (schema.fields) {
-        const objectValue = (typeof value === 'object' && value !== null) ? value as Record<string, unknown> : {};
+        const objectValue = typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
 
         const updateField = (fieldName: string, fieldValue: unknown) => {
             onChange({ ...objectValue, [fieldName]: fieldValue });
@@ -234,13 +229,7 @@ export function SchemaFormField({ name, schema, value, onChange, depth = 0 }: Sc
         // Numeric field
         if (isNumericType(schema.type)) {
             return (
-                <NumericField
-                    name={name}
-                    schemaType={schema.type}
-                    value={value}
-                    onChange={onChange}
-                    indent={indent}
-                />
+                <NumericField name={name} schemaType={schema.type} value={value} onChange={onChange} indent={indent} />
             );
         }
 

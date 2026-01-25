@@ -1,6 +1,21 @@
 import { useEffect } from 'react';
 import { useShallow } from 'zustand/shallow';
-import { ChevronRight, Loader2, Server, Folder, FileJson, Box, MessageSquare, ArrowUp, ArrowDown, Database, Zap, Clock, Settings, Sliders } from 'lucide-react';
+import {
+    ChevronRight,
+    Loader2,
+    Server,
+    Folder,
+    FileJson,
+    Box,
+    MessageSquare,
+    ArrowUp,
+    ArrowDown,
+    Database,
+    Zap,
+    Clock,
+    Settings,
+    Sliders,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useAppStore } from '@/lib/store';
@@ -67,14 +82,7 @@ function isParameterData(data: unknown): data is Parameter {
 }
 
 export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
-    const {
-        expandedPaths,
-        loadingPaths,
-        selectedPath,
-        toggleExpanded,
-        loadChildren,
-        selectEntity,
-    } = useAppStore(
+    const { expandedPaths, loadingPaths, selectedPath, toggleExpanded, loadChildren, selectEntity } = useAppStore(
         useShallow((state) => ({
             expandedPaths: state.expandedPaths,
             loadingPaths: state.loadingPaths,
@@ -118,7 +126,7 @@ export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
             <div
                 className={cn(
                     'flex items-center gap-1 py-1.5 px-2 rounded-md cursor-pointer hover:bg-accent/50 transition-colors',
-                    isSelected && 'bg-primary/10 text-primary font-medium',
+                    isSelected && 'bg-primary/10 text-primary font-medium'
                 )}
                 style={{ paddingLeft: `${depth * 16 + 8}px` }}
                 onClick={handleSelect}
@@ -127,7 +135,7 @@ export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
                     <button
                         className={cn(
                             'p-0.5 rounded hover:bg-primary/10 transition-transform',
-                            !hasChildren && 'invisible',
+                            !hasChildren && 'invisible'
                         )}
                     >
                         {isLoading ? (
@@ -144,59 +152,54 @@ export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
                     </button>
                 </CollapsibleTrigger>
 
-                <Icon className={cn(
-                    "w-4 h-4 shrink-0",
-                    isSelected ? "text-primary" : "text-muted-foreground"
-                )} />
+                <Icon className={cn('w-4 h-4 shrink-0', isSelected ? 'text-primary' : 'text-muted-foreground')} />
 
                 <span className="text-sm truncate flex-1">{node.name}</span>
 
                 {/* Topic direction indicators */}
                 {topicData && (
-                    <div className="flex items-center gap-0.5 mr-1" title={`${topicData.isPublisher ? 'Publishes' : ''}${topicData.isPublisher && topicData.isSubscriber ? ' & ' : ''}${topicData.isSubscriber ? 'Subscribes' : ''}`}>
-                        {topicData.isPublisher && (
-                            <ArrowUp className="w-3 h-3 text-green-500" />
-                        )}
-                        {topicData.isSubscriber && (
-                            <ArrowDown className="w-3 h-3 text-blue-500" />
-                        )}
+                    <div
+                        className="flex items-center gap-0.5 mr-1"
+                        title={`${topicData.isPublisher ? 'Publishes' : ''}${topicData.isPublisher && topicData.isSubscriber ? ' & ' : ''}${topicData.isSubscriber ? 'Subscribes' : ''}`}
+                    >
+                        {topicData.isPublisher && <ArrowUp className="w-3 h-3 text-green-500" />}
+                        {topicData.isSubscriber && <ArrowDown className="w-3 h-3 text-blue-500" />}
                     </div>
                 )}
 
                 {/* Parameter value indicator */}
                 {parameterData && (
-                    <span className="text-xs text-muted-foreground font-mono truncate max-w-[100px]" title={String(parameterData.value)}>
+                    <span
+                        className="text-xs text-muted-foreground font-mono truncate max-w-[100px]"
+                        title={String(parameterData.value)}
+                    >
                         {String(parameterData.value)}
                     </span>
                 )}
 
                 {/* Type label */}
-                <span className={cn(
-                    "text-xs shrink-0",
-                    isSelected ? "text-primary/70" : "text-muted-foreground"
-                )}>
+                <span className={cn('text-xs shrink-0', isSelected ? 'text-primary/70' : 'text-muted-foreground')}>
                     {node.type}
                 </span>
             </div>
 
             {hasChildren && (
                 <CollapsibleContent>
-                    {node.children && node.children.length > 0 ? (
-                        node.children.map((child) => (
-                            <EntityTreeNode key={child.path} node={child} depth={depth + 1} />
-                        ))
-                    ) : (
-                        // Empty state for folders with no children (after loading)
-                        !isLoading && node.children !== undefined && (
-                            <div
-                                className="flex items-center gap-2 py-1.5 px-2 text-muted-foreground italic text-sm select-none"
-                                style={{ paddingLeft: `${(depth + 1) * 16 + 8}px` }}
-                            >
-                                <span className="text-xs">—</span>
-                                <span>Empty</span>
-                            </div>
-                        )
-                    )}
+                    {node.children && node.children.length > 0
+                        ? node.children.map((child) => (
+                              <EntityTreeNode key={child.path} node={child} depth={depth + 1} />
+                          ))
+                        : // Empty state for folders with no children (after loading)
+                          !isLoading &&
+                          node.children !== undefined && (
+                              <div
+                                  className="flex items-center gap-2 py-1.5 px-2 text-muted-foreground italic text-sm select-none"
+                                  style={{ paddingLeft: `${(depth + 1) * 16 + 8}px` }}
+                              >
+                                  <span className="text-xs">—</span>
+                                  <span>Empty</span>
+                              </div>
+                          )}
                 </CollapsibleContent>
             )}
         </Collapsible>

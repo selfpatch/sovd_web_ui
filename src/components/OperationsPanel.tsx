@@ -1,13 +1,33 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useShallow } from 'zustand/shallow';
-import { Play, Loader2, RefreshCw, Zap, Clock, ChevronDown, ChevronUp, FileJson, FormInput, AlertCircle, History, Trash2 } from 'lucide-react';
+import {
+    Play,
+    Loader2,
+    RefreshCw,
+    Zap,
+    Clock,
+    ChevronDown,
+    ChevronUp,
+    FileJson,
+    FormInput,
+    AlertCircle,
+    History,
+    Trash2,
+} from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useAppStore, type AppState } from '@/lib/store';
-import type { Operation, OperationKind, OperationResponse, TopicSchema, ServiceSchema, ActionSchema } from '@/lib/types';
+import type {
+    Operation,
+    OperationKind,
+    OperationResponse,
+    TopicSchema,
+    ServiceSchema,
+    ActionSchema,
+} from '@/lib/types';
 import { ActionStatusPanel } from './ActionStatusPanel';
 import { SchemaForm } from './SchemaFormField';
 import { getSchemaDefaults } from '@/lib/schema-utils';
@@ -157,9 +177,10 @@ function OperationRow({
 
         try {
             // Build request based on operation kind
-            const request = operation.kind === 'service'
-                ? { type: operation.type, request: payload }
-                : { type: operation.type, goal: payload };
+            const request =
+                operation.kind === 'service'
+                    ? { type: operation.type, request: payload }
+                    : { type: operation.type, goal: payload };
 
             const response = await onInvoke(operation.name, request);
 
@@ -171,7 +192,7 @@ function OperationRow({
                     response,
                     goalId: response.kind === 'action' && response.status === 'success' ? response.goal_id : undefined,
                 };
-                setHistory(prev => [entry, ...prev.slice(0, 9)]);
+                setHistory((prev) => [entry, ...prev.slice(0, 9)]);
             }
         } finally {
             setIsInvoking(false);
@@ -207,9 +228,7 @@ function OperationRow({
                                     </Badge>
                                 )}
                             </div>
-                            <p className="text-xs text-muted-foreground truncate">
-                                {operation.type}
-                            </p>
+                            <p className="text-xs text-muted-foreground truncate">{operation.type}</p>
                         </div>
 
                         {isExpanded ? (
@@ -256,11 +275,7 @@ function OperationRow({
 
                                 {useFormView && hasSchema && inputSchema ? (
                                     <div className="bg-muted/30 p-3 rounded-md space-y-3">
-                                        <SchemaForm
-                                            schema={inputSchema}
-                                            value={formData}
-                                            onChange={handleFormChange}
-                                        />
+                                        <SchemaForm schema={inputSchema} value={formData} onChange={handleFormChange} />
                                         {/* Invoke button inside form */}
                                         <Button
                                             variant="default"
@@ -381,7 +396,10 @@ function OperationRow({
                                         {history.map((entry, idx) => (
                                             <div key={entry.id} className="relative">
                                                 {idx === 0 && (
-                                                    <Badge variant="outline" className="absolute -top-1 -right-1 text-[10px] z-10">
+                                                    <Badge
+                                                        variant="outline"
+                                                        className="absolute -top-1 -right-1 text-[10px] z-10"
+                                                    >
                                                         latest
                                                     </Badge>
                                                 )}
@@ -408,12 +426,7 @@ function OperationRow({
 }
 
 export function OperationsPanel({ componentId, highlightOperation }: OperationsPanelProps) {
-    const {
-        operations,
-        isLoadingOperations,
-        fetchOperations,
-        invokeOperation,
-    } = useAppStore(
+    const { operations, isLoadingOperations, fetchOperations, invokeOperation } = useAppStore(
         useShallow((state: AppState) => ({
             operations: state.operations,
             isLoadingOperations: state.isLoadingOperations,
@@ -423,8 +436,8 @@ export function OperationsPanel({ componentId, highlightOperation }: OperationsP
     );
 
     const componentOperations = operations.get(componentId) || [];
-    const services = componentOperations.filter(op => op.kind === 'service');
-    const actions = componentOperations.filter(op => op.kind === 'action');
+    const services = componentOperations.filter((op) => op.kind === 'service');
+    const actions = componentOperations.filter((op) => op.kind === 'action');
 
     // Fetch operations on mount (lazy loading)
     useEffect(() => {
@@ -465,12 +478,7 @@ export function OperationsPanel({ componentId, highlightOperation }: OperationsP
                             ({services.length} services, {actions.length} actions)
                         </span>
                     </div>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleRefresh}
-                        disabled={isLoadingOperations}
-                    >
+                    <Button variant="ghost" size="sm" onClick={handleRefresh} disabled={isLoadingOperations}>
                         <RefreshCw className={`w-4 h-4 ${isLoadingOperations ? 'animate-spin' : ''}`} />
                     </Button>
                 </div>

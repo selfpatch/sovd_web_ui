@@ -5,11 +5,24 @@ import type { SchemaFieldType, TopicSchema } from '@/lib/types';
  */
 export function isPrimitiveType(type: string): boolean {
     const primitives = [
-        'bool', 'boolean',
-        'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64',
-        'float', 'float32', 'float64', 'double',
-        'string', 'wstring',
-        'byte', 'char',
+        'bool',
+        'boolean',
+        'int8',
+        'uint8',
+        'int16',
+        'uint16',
+        'int32',
+        'uint32',
+        'int64',
+        'uint64',
+        'float',
+        'float32',
+        'float64',
+        'double',
+        'string',
+        'wstring',
+        'byte',
+        'char',
     ];
     return primitives.includes(type.toLowerCase());
 }
@@ -19,8 +32,18 @@ export function isPrimitiveType(type: string): boolean {
  */
 export function isNumericType(type: string): boolean {
     const numerics = [
-        'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64',
-        'float', 'float32', 'float64', 'double',
+        'int8',
+        'uint8',
+        'int16',
+        'uint16',
+        'int32',
+        'uint32',
+        'int64',
+        'uint64',
+        'float',
+        'float32',
+        'float64',
+        'double',
         'byte',
     ];
     return numerics.includes(type.toLowerCase());
