@@ -21,6 +21,8 @@ import type {
     Function,
     FunctionCapabilities,
     Fault,
+    FaultSeverity,
+    FaultStatus,
     ListFaultsResponse,
     ListSnapshotsResponse,
     ServerCapabilities,
@@ -265,13 +267,73 @@ export class SovdApiClient {
         // Path comes from the tree, e.g. "/area_id/component_id"
         const parts = path.split('/').filter((p) => p);
 
-        // Handle virtual folder paths: /area/component/data/topic
-        // Transform to: /area/component/topic for API call
-        if (parts.length === 4 && parts[2] === 'data') {
-            const componentId = parts[1]!;
-            const encodedTopicName = parts[3]!;
+        // Handle virtual folder paths: /area/component/data/topic or /area/component/apps/app/data/topic
+        // Transform to: components/{component}/data/{topic} or apps/{app}/data/{topic} for API call
+        if (parts.length >= 4 && parts.includes('data')) {
+            const dataIndex = parts.indexOf('data');
+            // Check if this is an app topic (path contains 'apps' before 'data')
+            const appsIndex = parts.indexOf('apps');
+            const isAppTopic = appsIndex !== -1 && appsIndex < dataIndex;
 
-            // Decode topic name using standard percent-decoding
+            if (isAppTopic && dataIndex >= 2) {
+                // App topic: /area/component/apps/app/data/topic
+                const appId = parts[appsIndex + 1]!;
+                const encodedTopicName = parts[dataIndex + 1]!;
+                const decodedTopicName = decodeURIComponent(encodedTopicName);
+
+                const response = await fetchWithTimeout(this.getUrl(`apps/${appId}/data/${encodedTopicName}`), {
+                    method: 'GET',
+                    headers: { Accept: 'application/json' },
+                });
+
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        throw new Error(`Topic ${decodedTopicName} not found for app ${appId}`);
+                    }
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                // API returns {data, id, x-medkit: {ros2: {type, topic, direction}, ...}}
+                interface DataItemResponse {
+                    data: unknown;
+                    id: string;
+                    'x-medkit'?: {
+                        ros2?: { type?: string; topic?: string; direction?: string };
+                        timestamp?: number;
+                        status?: string;
+                        publisher_count?: number;
+                        subscriber_count?: number;
+                    };
+                }
+                const item = (await response.json()) as DataItemResponse;
+                const xMedkit = item['x-medkit'];
+                const ros2 = xMedkit?.ros2;
+
+                const topic: ComponentTopic = {
+                    topic: ros2?.topic || `/${decodedTopicName}`,
+                    timestamp: xMedkit?.timestamp || Date.now() * 1000000,
+                    data: item.data,
+                    status: (xMedkit?.status as 'data' | 'metadata_only') || 'data',
+                    type: ros2?.type,
+                    publisher_count: xMedkit?.publisher_count,
+                    subscriber_count: xMedkit?.subscriber_count,
+                    isPublisher: ros2?.direction === 'publish',
+                    isSubscriber: ros2?.direction === 'subscribe',
+                };
+
+                return {
+                    id: encodedTopicName,
+                    name: topic.topic,
+                    href: path,
+                    topicData: topic,
+                    rosType: topic.type,
+                    type: 'topic',
+                };
+            }
+
+            // Component topic: /area/component/data/topic
+            const componentId = parts[1]!;
+            const encodedTopicName = parts[dataIndex + 1]!;
             const decodedTopicName = decodeURIComponent(encodedTopicName);
 
             const response = await fetchWithTimeout(this.getUrl(`components/${componentId}/data/${encodedTopicName}`), {
@@ -286,11 +348,37 @@ export class SovdApiClient {
                 throw new Error(`HTTP ${response.status}`);
             }
 
-            const topic = (await response.json()) as ComponentTopic;
+            // API returns {data, id, x-medkit: {ros2: {type, topic, direction}, ...}}
+            interface DataItemResponse {
+                data: unknown;
+                id: string;
+                'x-medkit'?: {
+                    ros2?: { type?: string; topic?: string; direction?: string };
+                    timestamp?: number;
+                    status?: string;
+                    publisher_count?: number;
+                    subscriber_count?: number;
+                };
+            }
+            const item = (await response.json()) as DataItemResponse;
+            const xMedkit = item['x-medkit'];
+            const ros2 = xMedkit?.ros2;
+
+            const topic: ComponentTopic = {
+                topic: ros2?.topic || `/${decodedTopicName}`,
+                timestamp: xMedkit?.timestamp || Date.now() * 1000000,
+                data: item.data,
+                status: (xMedkit?.status as 'data' | 'metadata_only') || 'data',
+                type: ros2?.type,
+                publisher_count: xMedkit?.publisher_count,
+                subscriber_count: xMedkit?.subscriber_count,
+                isPublisher: ros2?.direction === 'publish',
+                isSubscriber: ros2?.direction === 'subscribe',
+            };
 
             return {
                 id: encodedTopicName,
-                name: topic.topic || `/${decodedTopicName}`,
+                name: topic.topic,
                 href: path,
                 topicData: topic,
                 rosType: topic.type,
@@ -321,11 +409,37 @@ export class SovdApiClient {
                 throw new Error(`HTTP ${response.status}`);
             }
 
-            const topic = (await response.json()) as ComponentTopic;
+            // API returns {data, id, x-medkit: {ros2: {type, topic, direction}, ...}}
+            interface DataItemResponse {
+                data: unknown;
+                id: string;
+                'x-medkit'?: {
+                    ros2?: { type?: string; topic?: string; direction?: string };
+                    timestamp?: number;
+                    status?: string;
+                    publisher_count?: number;
+                    subscriber_count?: number;
+                };
+            }
+            const item = (await response.json()) as DataItemResponse;
+            const xMedkit = item['x-medkit'];
+            const ros2 = xMedkit?.ros2;
+
+            const topic: ComponentTopic = {
+                topic: ros2?.topic || `/${decodedTopicName}`,
+                timestamp: xMedkit?.timestamp || Date.now() * 1000000,
+                data: item.data,
+                status: (xMedkit?.status as 'data' | 'metadata_only') || 'data',
+                type: ros2?.type,
+                publisher_count: xMedkit?.publisher_count,
+                subscriber_count: xMedkit?.subscriber_count,
+                isPublisher: ros2?.direction === 'publish',
+                isSubscriber: ros2?.direction === 'subscribe',
+            };
 
             return {
                 id: encodedTopicName,
-                name: topic.topic || `/${decodedTopicName}`,
+                name: topic.topic,
                 href: path,
                 topicData: topic,
                 rosType: topic.type,
@@ -851,18 +965,28 @@ export class SovdApiClient {
             id: string;
             name: string;
             category?: string;
-            'x-medkit'?: { ros2?: { topic?: string; direction?: string } };
+            'x-medkit'?: { ros2?: { topic?: string; direction?: string; type?: string } };
         }
         const dataItems = unwrapItems<DataItem>(await response.json());
 
         // Transform to ComponentTopic format
+        // NOTE: Same topic can appear twice with different directions (publish/subscribe)
+        // We include direction in the key to make them unique
         return dataItems.map((item) => {
             const topicName = item.name || item['x-medkit']?.ros2?.topic || item.id;
+            const direction = item['x-medkit']?.ros2?.direction;
+            const type = item['x-medkit']?.ros2?.type;
             return {
                 topic: topicName,
                 timestamp: Date.now() * 1000000,
                 data: null,
                 status: 'metadata_only' as const,
+                // Include direction for unique key generation
+                isPublisher: direction === 'publish',
+                isSubscriber: direction === 'subscribe',
+                // Include unique key combining topic and direction
+                uniqueKey: direction ? `${topicName}:${direction}` : topicName,
+                type,
             };
         });
     }
@@ -883,7 +1007,33 @@ export class SovdApiClient {
             throw new Error(errorData.message || `HTTP ${response.status}`);
         }
 
-        return await response.json();
+        // API returns {data, id, x-medkit: {ros2: {type, topic, direction}, ...}}
+        interface DataItemResponse {
+            data: unknown;
+            id: string;
+            'x-medkit'?: {
+                ros2?: { type?: string; topic?: string; direction?: string };
+                timestamp?: number;
+                status?: string;
+                publisher_count?: number;
+                subscriber_count?: number;
+            };
+        }
+        const item = (await response.json()) as DataItemResponse;
+        const xMedkit = item['x-medkit'];
+        const ros2 = xMedkit?.ros2;
+
+        return {
+            topic: ros2?.topic || topicName,
+            timestamp: xMedkit?.timestamp || Date.now() * 1000000,
+            data: item.data,
+            status: (xMedkit?.status as 'data' | 'metadata_only') || 'data',
+            type: ros2?.type,
+            publisher_count: xMedkit?.publisher_count,
+            subscriber_count: xMedkit?.subscriber_count,
+            isPublisher: ros2?.direction === 'publish',
+            isSubscriber: ros2?.direction === 'subscribe',
+        };
     }
 
     /**
@@ -1025,6 +1175,65 @@ export class SovdApiClient {
     // ===========================================================================
 
     /**
+     * Transform API fault response to Fault interface
+     * API returns: {fault_code, description, severity (number), severity_label, status, first_occurred, ...}
+     * We need: {code, message, severity (string), status (lowercase), timestamp, entity_id, entity_type}
+     */
+    private transformFault(apiFault: {
+        fault_code: string;
+        description: string;
+        severity: number;
+        severity_label: string;
+        status: string;
+        first_occurred: number;
+        last_occurred?: number;
+        occurrence_count?: number;
+        reporting_sources?: string[];
+    }): Fault {
+        // Map severity number/label to FaultSeverity
+        let severity: FaultSeverity = 'info';
+        const label = apiFault.severity_label?.toLowerCase() || '';
+        if (label === 'error' || apiFault.severity >= 2) {
+            severity = 'error';
+        } else if (label === 'warn' || label === 'warning' || apiFault.severity === 1) {
+            severity = 'warning';
+        } else if (label === 'critical' || apiFault.severity >= 3) {
+            severity = 'critical';
+        }
+
+        // Map status to FaultStatus
+        let status: FaultStatus = 'active';
+        const apiStatus = apiFault.status?.toLowerCase() || '';
+        if (apiStatus === 'confirmed' || apiStatus === 'active') {
+            status = 'active';
+        } else if (apiStatus === 'pending') {
+            status = 'pending';
+        } else if (apiStatus === 'cleared' || apiStatus === 'resolved') {
+            status = 'cleared';
+        }
+
+        // Extract entity info from reporting_sources
+        const source = apiFault.reporting_sources?.[0] || '';
+        const entity_id = source.split('/').pop() || 'unknown';
+        const entity_type = source.includes('/bridge/') ? 'bridge' : 'component';
+
+        return {
+            code: apiFault.fault_code,
+            message: apiFault.description,
+            severity,
+            status,
+            timestamp: new Date(apiFault.first_occurred * 1000).toISOString(),
+            entity_id,
+            entity_type,
+            parameters: {
+                occurrence_count: apiFault.occurrence_count,
+                last_occurred: apiFault.last_occurred,
+                reporting_sources: apiFault.reporting_sources,
+            },
+        };
+    }
+
+    /**
      * List all faults across the system
      */
     async listAllFaults(): Promise<ListFaultsResponse> {
@@ -1037,7 +1246,11 @@ export class SovdApiClient {
             throw new Error(`HTTP ${response.status}`);
         }
 
-        return await response.json();
+        const data = await response.json();
+        const items = (data.items || []).map((f: unknown) =>
+            this.transformFault(f as Parameters<typeof this.transformFault>[0])
+        );
+        return { items, count: data['x-medkit']?.count || items.length };
     }
 
     /**
@@ -1058,7 +1271,11 @@ export class SovdApiClient {
             throw new Error(`HTTP ${response.status}`);
         }
 
-        return await response.json();
+        const data = await response.json();
+        const items = (data.items || []).map((f: unknown) =>
+            this.transformFault(f as Parameters<typeof this.transformFault>[0])
+        );
+        return { items, count: data['x-medkit']?.count || items.length };
     }
 
     /**

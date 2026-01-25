@@ -167,6 +167,12 @@ export interface ComponentTopic {
     publishers?: TopicEndpoint[];
     /** List of subscriber endpoints with QoS */
     subscribers?: TopicEndpoint[];
+    /** Whether this node publishes to the topic */
+    isPublisher?: boolean;
+    /** Whether this node subscribes to the topic */
+    isSubscriber?: boolean;
+    /** Unique key combining topic and direction for React key */
+    uniqueKey?: string;
 }
 
 /**

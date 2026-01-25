@@ -404,7 +404,9 @@ export const useAppStore = create<AppState>()(
                             if (folderData.entityType === 'app') {
                                 const topics = await client.getAppData(folderData.componentId);
                                 children = topics.map((topic) => {
-                                    const cleanName = topic.topic.startsWith('/') ? topic.topic.slice(1) : topic.topic;
+                                    // Use uniqueKey if available (includes direction), otherwise just topic name
+                                    const uniqueId = topic.uniqueKey || topic.topic;
+                                    const cleanName = uniqueId.startsWith('/') ? uniqueId.slice(1) : uniqueId;
                                     const encodedName = encodeURIComponent(cleanName);
                                     return {
                                         id: encodedName,
@@ -415,7 +417,11 @@ export const useAppStore = create<AppState>()(
                                         hasChildren: false,
                                         isLoading: false,
                                         isExpanded: false,
-                                        data: topic,
+                                        data: {
+                                            ...topic,
+                                            isPublisher: topic.isPublisher ?? false,
+                                            isSubscriber: topic.isSubscriber ?? false,
+                                        },
                                     };
                                 });
                             } else {

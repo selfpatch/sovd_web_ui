@@ -21,6 +21,7 @@ import { TopicDiagnosticsPanel } from '@/components/TopicDiagnosticsPanel';
 import { ConfigurationPanel } from '@/components/ConfigurationPanel';
 import { OperationsPanel } from '@/components/OperationsPanel';
 import { DataFolderPanel } from '@/components/DataFolderPanel';
+import { FaultsPanel } from '@/components/FaultsPanel';
 import { useAppStore, type AppState } from '@/lib/store';
 import type { ComponentTopic, Parameter } from '@/lib/types';
 
@@ -289,19 +290,27 @@ function ParameterDetailCard({ entity, componentId }: ParameterDetailCardProps) 
  * Virtual folder content - redirect to appropriate panel
  */
 interface VirtualFolderContentProps {
-    folderType: 'data' | 'operations' | 'configurations';
+    folderType: 'data' | 'operations' | 'configurations' | 'faults';
     componentId: string;
     basePath: string;
+    entityType?: 'components' | 'apps';
 }
 
-function VirtualFolderContent({ folderType, componentId, basePath }: VirtualFolderContentProps) {
+function VirtualFolderContent({
+    folderType,
+    componentId,
+    basePath,
+    entityType = 'components',
+}: VirtualFolderContentProps) {
     switch (folderType) {
         case 'data':
             return <DataFolderPanel basePath={basePath} />;
         case 'operations':
-            return <OperationsPanel componentId={componentId} />;
+            return <OperationsPanel componentId={componentId} entityType={entityType} />;
         case 'configurations':
-            return <ConfigurationPanel componentId={componentId} />;
+            return <ConfigurationPanel componentId={componentId} entityType={entityType} />;
+        case 'faults':
+            return <FaultsPanel componentId={componentId} entityType={entityType} />;
         default:
             return null;
     }
@@ -503,13 +512,18 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
                             // Extract base path (component path) from folder path
                             // e.g., /root/route_server/data -> /root/route_server
                             const folderPathParts = selectedPath.split('/');
-                            folderPathParts.pop(); // Remove folder name (data/operations/configurations)
+                            folderPathParts.pop(); // Remove folder name (data/operations/configurations/faults)
                             const basePath = folderPathParts.join('/');
+                            // Determine entity type from folder data
+                            const entityType = selectedEntity.entityType === 'app' ? 'apps' : 'components';
                             return (
                                 <VirtualFolderContent
-                                    folderType={selectedEntity.folderType as 'data' | 'operations' | 'configurations'}
+                                    folderType={
+                                        selectedEntity.folderType as 'data' | 'operations' | 'configurations' | 'faults'
+                                    }
                                     componentId={selectedEntity.componentId as string}
                                     basePath={basePath}
+                                    entityType={entityType}
                                 />
                             );
                         })()
