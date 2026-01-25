@@ -14,6 +14,7 @@ import type {
     CreateExecutionResponse,
     Fault,
     VirtualFolderData,
+    App,
 } from './types';
 import { isVirtualFolderData } from './types';
 import { createSovdClient, type SovdApiClient } from './sovd-api';
@@ -97,7 +98,7 @@ export interface AppState {
 function toTreeNode(entity: SovdEntity, parentPath: string = ''): EntityTreeNode {
     const path = parentPath ? `${parentPath}/${entity.id}` : `/${entity.id}`;
 
-    // If this is a component, create virtual subfolders: data/, operations/, configurations/
+    // If this is a component, create virtual subfolders: data/, operations/, configurations/, faults/, apps/
     let children: EntityTreeNode[] | undefined;
     if (entity.type === 'component') {
         // Create virtual subfolder nodes for component
@@ -111,7 +112,12 @@ function toTreeNode(entity: SovdEntity, parentPath: string = ''): EntityTreeNode
                 hasChildren: true, // Topics will be loaded here
                 isLoading: false,
                 isExpanded: false,
-                data: { folderType: 'data', componentId: entity.id, topicsInfo: entity.topicsInfo },
+                data: {
+                    folderType: 'data',
+                    componentId: entity.id,
+                    entityType: 'component',
+                    topicsInfo: entity.topicsInfo,
+                },
             },
             {
                 id: 'operations',
@@ -122,7 +128,7 @@ function toTreeNode(entity: SovdEntity, parentPath: string = ''): EntityTreeNode
                 hasChildren: true, // Services/actions loaded on demand
                 isLoading: false,
                 isExpanded: false,
-                data: { folderType: 'operations', componentId: entity.id },
+                data: { folderType: 'operations', componentId: entity.id, entityType: 'component' },
             },
             {
                 id: 'configurations',
@@ -133,7 +139,78 @@ function toTreeNode(entity: SovdEntity, parentPath: string = ''): EntityTreeNode
                 hasChildren: true, // Parameters loaded on demand
                 isLoading: false,
                 isExpanded: false,
-                data: { folderType: 'configurations', componentId: entity.id },
+                data: { folderType: 'configurations', componentId: entity.id, entityType: 'component' },
+            },
+            {
+                id: 'faults',
+                name: 'faults',
+                type: 'folder',
+                href: `${path}/faults`,
+                path: `${path}/faults`,
+                hasChildren: true, // Faults loaded on demand
+                isLoading: false,
+                isExpanded: false,
+                data: { folderType: 'faults', componentId: entity.id, entityType: 'component' },
+            },
+            {
+                id: 'apps',
+                name: 'apps',
+                type: 'folder',
+                href: `${path}/apps`,
+                path: `${path}/apps`,
+                hasChildren: true, // Apps (ROS 2 nodes) loaded on demand
+                isLoading: false,
+                isExpanded: false,
+                data: { folderType: 'apps', componentId: entity.id, entityType: 'component' },
+            },
+        ];
+    }
+    // If this is an app, create virtual subfolders: data/, operations/, configurations/, faults/
+    else if (entity.type === 'app') {
+        children = [
+            {
+                id: 'data',
+                name: 'data',
+                type: 'folder',
+                href: `${path}/data`,
+                path: `${path}/data`,
+                hasChildren: true,
+                isLoading: false,
+                isExpanded: false,
+                data: { folderType: 'data', componentId: entity.id, entityType: 'app' },
+            },
+            {
+                id: 'operations',
+                name: 'operations',
+                type: 'folder',
+                href: `${path}/operations`,
+                path: `${path}/operations`,
+                hasChildren: true,
+                isLoading: false,
+                isExpanded: false,
+                data: { folderType: 'operations', componentId: entity.id, entityType: 'app' },
+            },
+            {
+                id: 'configurations',
+                name: 'configurations',
+                type: 'folder',
+                href: `${path}/configurations`,
+                path: `${path}/configurations`,
+                hasChildren: true,
+                isLoading: false,
+                isExpanded: false,
+                data: { folderType: 'configurations', componentId: entity.id, entityType: 'app' },
+            },
+            {
+                id: 'faults',
+                name: 'faults',
+                type: 'folder',
+                href: `${path}/faults`,
+                path: `${path}/faults`,
+                hasChildren: true,
+                isLoading: false,
+                isExpanded: false,
+                data: { folderType: 'faults', componentId: entity.id, entityType: 'app' },
             },
         ];
     }
@@ -322,29 +399,52 @@ export const useAppStore = create<AppState>()(
 
                         if (folderData.folderType === 'data') {
                             // Load topics for data folder
-                            const topics = await client.getEntities(path.replace('/data', ''));
-                            children = topics.map((topic: SovdEntity & { data?: ComponentTopic }) => {
-                                const cleanName = topic.name.startsWith('/') ? topic.name.slice(1) : topic.name;
-                                const encodedName = encodeURIComponent(cleanName);
-                                return {
-                                    id: encodedName,
-                                    name: topic.name,
-                                    type: 'topic',
-                                    href: `${path}/${encodedName}`,
-                                    path: `${path}/${encodedName}`,
-                                    hasChildren: false,
-                                    isLoading: false,
-                                    isExpanded: false,
-                                    data: topic.data || {
-                                        topic: topic.name,
-                                        isPublisher: folderData.topicsInfo?.publishes?.includes(topic.name) ?? false,
-                                        isSubscriber: folderData.topicsInfo?.subscribes?.includes(topic.name) ?? false,
-                                    },
-                                };
-                            });
+                            // For apps, use apps API; for components, use getEntities
+                            if (folderData.entityType === 'app') {
+                                const topics = await client.getAppData(folderData.componentId);
+                                children = topics.map((topic) => {
+                                    const cleanName = topic.topic.startsWith('/') ? topic.topic.slice(1) : topic.topic;
+                                    const encodedName = encodeURIComponent(cleanName);
+                                    return {
+                                        id: encodedName,
+                                        name: topic.topic,
+                                        type: 'topic',
+                                        href: `${path}/${encodedName}`,
+                                        path: `${path}/${encodedName}`,
+                                        hasChildren: false,
+                                        isLoading: false,
+                                        isExpanded: false,
+                                        data: topic,
+                                    };
+                                });
+                            } else {
+                                const topics = await client.getEntities(path.replace('/data', ''));
+                                children = topics.map((topic: SovdEntity & { data?: ComponentTopic }) => {
+                                    const cleanName = topic.name.startsWith('/') ? topic.name.slice(1) : topic.name;
+                                    const encodedName = encodeURIComponent(cleanName);
+                                    return {
+                                        id: encodedName,
+                                        name: topic.name,
+                                        type: 'topic',
+                                        href: `${path}/${encodedName}`,
+                                        path: `${path}/${encodedName}`,
+                                        hasChildren: false,
+                                        isLoading: false,
+                                        isExpanded: false,
+                                        data: topic.data || {
+                                            topic: topic.name,
+                                            isPublisher:
+                                                folderData.topicsInfo?.publishes?.includes(topic.name) ?? false,
+                                            isSubscriber:
+                                                folderData.topicsInfo?.subscribes?.includes(topic.name) ?? false,
+                                        },
+                                    };
+                                });
+                            }
                         } else if (folderData.folderType === 'operations') {
                             // Load operations for operations folder
-                            const ops = await client.listOperations(folderData.componentId);
+                            const entityType = folderData.entityType === 'app' ? 'apps' : 'components';
+                            const ops = await client.listOperations(folderData.componentId, entityType);
                             children = ops.map((op) => ({
                                 id: op.name,
                                 name: op.name,
@@ -370,6 +470,29 @@ export const useAppStore = create<AppState>()(
                                 isExpanded: false,
                                 data: param,
                             }));
+                        } else if (folderData.folderType === 'faults') {
+                            // Load faults for this entity
+                            const entityType = folderData.entityType === 'app' ? 'apps' : 'components';
+                            const faultsResponse = await client.listEntityFaults(entityType, folderData.componentId);
+                            children = faultsResponse.items.map((fault) => ({
+                                id: fault.code,
+                                name: `${fault.code}: ${fault.message}`,
+                                type: 'fault',
+                                href: `${path}/${encodeURIComponent(fault.code)}`,
+                                path: `${path}/${encodeURIComponent(fault.code)}`,
+                                hasChildren: false,
+                                isLoading: false,
+                                isExpanded: false,
+                                data: fault,
+                            }));
+                        } else if (folderData.folderType === 'apps') {
+                            // Load apps belonging to this component
+                            // Filter apps by component_id
+                            const allApps = await client.listApps();
+                            const componentApps = allApps.filter((app) => app.component_id === folderData.componentId);
+                            children = componentApps.map((app) =>
+                                toTreeNode({ ...app, type: 'app', hasChildren: true }, path)
+                            );
                         }
 
                         const updatedTree = updateNodeInTree(rootEntities, path, (n) => ({
@@ -558,7 +681,7 @@ export const useAppStore = create<AppState>()(
                 }
 
                 // Optimization for Component - just select it and auto-expand
-                // Don't modify children - virtual folders (data/, operations/, configurations/) are already there
+                // Don't modify children - virtual folders (data/, operations/, configurations/, faults/, apps/) are already there
                 if (node && node.type === 'component') {
                     // Auto-expand component to show virtual folders
                     const newExpandedPaths = expandedPaths.includes(path) ? expandedPaths : [...expandedPaths, path];
@@ -579,6 +702,52 @@ export const useAppStore = create<AppState>()(
                     return;
                 }
 
+                // Handle App entity selection - auto-expand to show virtual folders
+                if (node && node.type === 'app') {
+                    const newExpandedPaths = expandedPaths.includes(path) ? expandedPaths : [...expandedPaths, path];
+                    const appData = node.data as App | undefined;
+
+                    set({
+                        selectedPath: path,
+                        expandedPaths: newExpandedPaths,
+                        isLoadingDetails: false,
+                        selectedEntity: {
+                            id: node.id,
+                            name: node.name,
+                            type: 'app',
+                            href: node.href,
+                            // Pass app-specific data
+                            fqn: appData?.fqn || node.name,
+                            node_name: appData?.node_name,
+                            namespace: appData?.namespace,
+                            component_id: appData?.component_id,
+                        },
+                    });
+                    return;
+                }
+
+                // Handle fault selection - show fault details
+                if (node && node.type === 'fault' && node.data) {
+                    const fault = node.data as Fault;
+                    // Extract entity info from path: /area/component/faults/code
+                    const pathSegments = path.split('/').filter(Boolean);
+                    const entityId = pathSegments.length >= 2 ? pathSegments[pathSegments.length - 3] : '';
+
+                    set({
+                        selectedPath: path,
+                        isLoadingDetails: false,
+                        selectedEntity: {
+                            id: node.id,
+                            name: fault.message,
+                            type: 'fault',
+                            href: node.href,
+                            data: fault,
+                            entityId,
+                        },
+                    });
+                    return;
+                }
+
                 // Handle virtual folder selection - show appropriate panel
                 if (node && isVirtualFolderData(node.data)) {
                     const folderData = node.data as VirtualFolderData;
@@ -593,6 +762,7 @@ export const useAppStore = create<AppState>()(
                             // Pass folder info so detail panel knows what to show
                             folderType: folderData.folderType,
                             componentId: folderData.componentId,
+                            entityType: folderData.entityType,
                         },
                     });
                     return;

@@ -123,13 +123,15 @@ export interface TopicNodeData {
 }
 
 /**
- * Virtual folder data for component subfolders
+ * Virtual folder data for component/app subfolders
  */
 export interface VirtualFolderData {
-    /** Type of virtual folder: data, operations, or configurations */
-    folderType: 'data' | 'operations' | 'configurations';
-    /** Parent component ID */
+    /** Type of virtual folder: data, operations, configurations, faults, or apps */
+    folderType: 'data' | 'operations' | 'configurations' | 'faults' | 'apps';
+    /** Parent entity ID (component or app) */
     componentId: string;
+    /** Parent entity type */
+    entityType: 'component' | 'app';
     /** Topics info (for data folder) */
     topicsInfo?: ComponentTopicsInfo;
 }
