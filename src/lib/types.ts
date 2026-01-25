@@ -366,38 +366,6 @@ export interface InvokeOperationRequest {
     goal?: unknown;
 }
 
-/**
- * Response from POST /components/{id}/operations/{op} for services
- */
-export interface ServiceOperationResponse {
-    status: 'success' | 'error';
-    kind: 'service';
-    component_id: string;
-    operation: string;
-    response: unknown;
-    error?: string;
-}
-
-/**
- * Response from POST /{entity}/operations/{op}/executions for actions
- */
-export interface ActionOperationResponse {
-    status: 'success' | 'error';
-    kind: 'action';
-    component_id: string;
-    operation: string;
-    /** Execution ID for action tracking */
-    execution_id: string;
-    /** Initial execution status */
-    execution_status: ExecutionStatus;
-    error?: string;
-}
-
-/**
- * Union type for operation response
- */
-export type OperationResponse = ServiceOperationResponse | ActionOperationResponse;
-
 // =============================================================================
 // COMPONENT EXTENDED (with operations list from discovery)
 // =============================================================================

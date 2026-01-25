@@ -148,7 +148,11 @@ export class SovdApiClient {
             });
 
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const areas = await response.json();
+            const areasResponse = await response.json();
+            // Handle both array and wrapped {areas: [...]} response formats
+            const areas = Array.isArray(areasResponse)
+                ? areasResponse
+                : (areasResponse.areas ?? areasResponse.items ?? []);
 
             return areas.map((area: { id: string }) => ({
                 id: area.id,
@@ -172,7 +176,11 @@ export class SovdApiClient {
             });
 
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const components = await response.json();
+            const componentsResponse = await response.json();
+            // Handle both array and wrapped {components: [...]} response formats
+            const components = Array.isArray(componentsResponse)
+                ? componentsResponse
+                : (componentsResponse.components ?? componentsResponse.items ?? []);
 
             return components.map((comp: { id: string; fqn?: string; topics?: ComponentTopicsInfo }) => {
                 // Check if component has any topics (publishes or subscribes)
