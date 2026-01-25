@@ -1,6 +1,7 @@
 # sovd_web_ui
 
 [![CI](https://github.com/selfpatch/sovd_web_ui/actions/workflows/ci.yml/badge.svg)](https://github.com/selfpatch/sovd_web_ui/actions/workflows/ci.yml)
+[![Docker Hub](https://img.shields.io/docker/v/bburda/sovd_web_ui?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/bburda/sovd_web_ui)
 
 Simple, open-source web UI for browsing SOVD (Service-Oriented Vehicle Diagnostics) entity trees via discovery endpoints.
 
@@ -33,11 +34,27 @@ This tool is designed for developers and integrators working with SOVD-compatibl
 ### Using Docker
 
 ```bash
+# Pull from Docker Hub
+docker pull bburda/sovd_web_ui:latest
+docker run -p 8080:80 bburda/sovd_web_ui:latest
+
+# Or build locally
 docker build -t sovd_web_ui .
 docker run -p 8080:80 sovd_web_ui
 ```
 
 Then open http://localhost:8080 in your browser.
+
+#### Docker Image Tags
+
+Docker images are automatically published to Docker Hub via GitHub Actions:
+
+| Trigger | Image Tags |
+|---------|------------|
+| Push/merge to `main` | `latest`, `sha-<commit>` |
+| Git tag `v1.2.3` | `1.2.3`, `1.2`, `1`, `sha-<commit>` |
+
+Images are built for both `linux/amd64` and `linux/arm64` platforms.
 
 ### Development
 
