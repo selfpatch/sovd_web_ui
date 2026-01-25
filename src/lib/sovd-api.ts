@@ -221,22 +221,35 @@ export class SovdApiClient {
             });
 
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const topics = unwrapItems<ComponentTopic>(await response.json());
 
-            // Return entities with FULL ComponentTopic data preserved
-            // This includes: type, type_info, publishers, subscribers, QoS, etc.
-            return topics.map((topic) => {
-                const cleanTopicName = topic.topic.startsWith('/') ? topic.topic.slice(1) : topic.topic;
+            // API returns {items: [{id, name, category, x-medkit}]}
+            interface DataItem {
+                id: string;
+                name: string;
+                category?: string;
+                'x-medkit'?: { ros2?: { topic?: string; direction?: string } };
+            }
+            const dataItems = unwrapItems<DataItem>(await response.json());
+
+            // Return entities with transformed data
+            return dataItems.map((item) => {
+                const topicName = item.name || item['x-medkit']?.ros2?.topic || item.id;
+                const cleanTopicName = topicName.startsWith('/') ? topicName.slice(1) : topicName;
                 const encodedTopicName = encodeURIComponent(cleanTopicName);
 
                 return {
                     id: encodedTopicName,
-                    name: topic.topic,
+                    name: topicName,
                     type: 'topic',
                     href: `/${parts[0]}/${parts[1]}/${encodedTopicName}`,
                     hasChildren: false,
-                    // IMPORTANT: Store full ComponentTopic for rich topic view
-                    data: topic,
+                    // Store transformed data as ComponentTopic
+                    data: {
+                        topic: topicName,
+                        timestamp: Date.now() * 1000000,
+                        data: null,
+                        status: 'metadata_only' as const,
+                    },
                 };
             });
         }
@@ -833,7 +846,25 @@ export class SovdApiClient {
             throw new Error(`HTTP ${response.status}`);
         }
 
-        return unwrapItems<ComponentTopic>(await response.json());
+        // API returns {items: [{id, name, category, x-medkit}]}
+        interface DataItem {
+            id: string;
+            name: string;
+            category?: string;
+            'x-medkit'?: { ros2?: { topic?: string; direction?: string } };
+        }
+        const dataItems = unwrapItems<DataItem>(await response.json());
+
+        // Transform to ComponentTopic format
+        return dataItems.map((item) => {
+            const topicName = item.name || item['x-medkit']?.ros2?.topic || item.id;
+            return {
+                topic: topicName,
+                timestamp: Date.now() * 1000000,
+                data: null,
+                status: 'metadata_only' as const,
+            };
+        });
     }
 
     /**
