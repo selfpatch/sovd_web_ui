@@ -15,6 +15,9 @@ import {
     Clock,
     Settings,
     Sliders,
+    AlertTriangle,
+    Cpu,
+    Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -41,6 +44,10 @@ function getEntityIcon(type: string, data?: unknown) {
                 return Zap;
             case 'configurations':
                 return Settings;
+            case 'faults':
+                return AlertTriangle;
+            case 'apps':
+                return Users;
         }
     }
 
@@ -62,6 +69,10 @@ function getEntityIcon(type: string, data?: unknown) {
             return Clock;
         case 'parameter':
             return Sliders;
+        case 'app':
+            return Cpu;
+        case 'fault':
+            return AlertTriangle;
         default:
             return FileJson;
     }
