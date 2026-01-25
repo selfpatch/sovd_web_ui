@@ -38,10 +38,7 @@ function App() {
         <div className="flex h-screen bg-background">
             <EntityTreeSidebar onSettingsClick={() => setShowConnectionDialog(true)} />
             <EntityDetailPanel onConnectClick={() => setShowConnectionDialog(true)} />
-            <ServerConnectionDialog
-                open={showConnectionDialog}
-                onOpenChange={setShowConnectionDialog}
-            />
+            <ServerConnectionDialog open={showConnectionDialog} onOpenChange={setShowConnectionDialog} />
             <ToastContainer
                 position="bottom-right"
                 autoClose={5000}

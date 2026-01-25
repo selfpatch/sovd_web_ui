@@ -82,13 +82,16 @@ function ParameterRow({
         }
     }, [param, onResetParameter]);
 
-    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') {
-            saveValue();
-        } else if (e.key === 'Escape') {
-            cancelEditing();
-        }
-    }, [saveValue, cancelEditing]);
+    const handleKeyDown = useCallback(
+        (e: React.KeyboardEvent) => {
+            if (e.key === 'Enter') {
+                saveValue();
+            } else if (e.key === 'Escape') {
+                cancelEditing();
+            }
+        },
+        [saveValue, cancelEditing]
+    );
 
     // Toggle for boolean parameters
     const toggleBool = useCallback(async () => {
@@ -102,7 +105,9 @@ function ParameterRow({
     }, [param, onSetParameter]);
 
     return (
-        <div className={`flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/30 transition-colors ${isHighlighted ? 'ring-2 ring-primary border-primary' : ''}`}>
+        <div
+            className={`flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/30 transition-colors ${isHighlighted ? 'ring-2 ring-primary border-primary' : ''}`}
+        >
             {/* Parameter name */}
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
@@ -114,9 +119,7 @@ function ParameterRow({
                     )}
                 </div>
                 {param.description && (
-                    <p className="text-xs text-muted-foreground truncate mt-0.5">
-                        {param.description}
-                    </p>
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">{param.description}</p>
                 )}
             </div>
 
@@ -136,13 +139,7 @@ function ParameterRow({
                         disabled={param.read_only || isSaving}
                         onClick={toggleBool}
                     >
-                        {isSaving ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : param.value ? (
-                            'true'
-                        ) : (
-                            'false'
-                        )}
+                        {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : param.value ? 'true' : 'false'}
                     </Button>
                 ) : isEditing ? (
                     // Editing mode
@@ -162,11 +159,7 @@ function ParameterRow({
                             disabled={isSaving}
                             className="h-8 w-8 p-0"
                         >
-                            {isSaving ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                                <Save className="w-4 h-4" />
-                            )}
+                            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                         </Button>
                         <Button
                             variant="ghost"
@@ -181,10 +174,11 @@ function ParameterRow({
                 ) : (
                     // Display mode - click to edit
                     <div
-                        className={`px-3 py-1.5 rounded border text-sm font-mono truncate ${param.read_only
+                        className={`px-3 py-1.5 rounded border text-sm font-mono truncate ${
+                            param.read_only
                                 ? 'bg-muted text-muted-foreground cursor-not-allowed'
                                 : 'bg-background cursor-pointer hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2'
-                            }`}
+                        }`}
                         onClick={startEditing}
                         onKeyDown={(e) => {
                             if (!param.read_only && (e.key === 'Enter' || e.key === ' ')) {
@@ -194,7 +188,11 @@ function ParameterRow({
                         }}
                         role={param.read_only ? undefined : 'button'}
                         tabIndex={param.read_only ? undefined : 0}
-                        aria-label={param.read_only ? `${param.name}: ${formatValue(param.value, param.type)} (read-only)` : `Edit ${param.name}`}
+                        aria-label={
+                            param.read_only
+                                ? `${param.name}: ${formatValue(param.value, param.type)} (read-only)`
+                                : `Edit ${param.name}`
+                        }
                         title={param.read_only ? 'Read-only parameter' : 'Click to edit'}
                     >
                         {formatValue(param.value, param.type)}
@@ -212,11 +210,7 @@ function ParameterRow({
                     className="h-8 w-8 p-0 shrink-0"
                     title="Reset to default"
                 >
-                    {isResetting ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                        <RotateCcw className="w-4 h-4" />
-                    )}
+                    {isResetting ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
                 </Button>
             )}
         </div>
@@ -338,9 +332,7 @@ export function ConfigurationPanel({ componentId, highlightParam }: Configuratio
                     <div className="flex items-center gap-2">
                         <Settings className="w-5 h-5 text-muted-foreground" />
                         <CardTitle className="text-base">Configurations</CardTitle>
-                        <span className="text-xs text-muted-foreground">
-                            ({parameters.length} parameters)
-                        </span>
+                        <span className="text-xs text-muted-foreground">({parameters.length} parameters)</span>
                     </div>
                     <div className="flex items-center gap-1">
                         <Button
@@ -357,12 +349,7 @@ export function ConfigurationPanel({ componentId, highlightParam }: Configuratio
                             )}
                             Reset All
                         </Button>
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={handleRefresh}
-                            disabled={isLoadingConfigurations}
-                        >
+                        <Button variant="ghost" size="sm" onClick={handleRefresh} disabled={isLoadingConfigurations}>
                             <RefreshCw className={`w-4 h-4 ${isLoadingConfigurations ? 'animate-spin' : ''}`} />
                         </Button>
                     </div>

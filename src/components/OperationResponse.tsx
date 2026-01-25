@@ -86,22 +86,20 @@ export function OperationResponseDisplay({ response }: OperationResponseProps) {
     const KindIcon = isAction ? Clock : Zap;
 
     return (
-        <div className={`rounded-lg border ${isSuccess ? 'border-green-500/30 bg-green-500/5' : 'border-destructive/30 bg-destructive/5'}`}>
+        <div
+            className={`rounded-lg border ${isSuccess ? 'border-green-500/30 bg-green-500/5' : 'border-destructive/30 bg-destructive/5'}`}
+        >
             {/* Header */}
             <div className="flex items-center gap-3 px-3 py-2 border-b border-inherit">
                 <StatusIcon className={`w-4 h-4 ${isSuccess ? 'text-green-500' : 'text-destructive'}`} />
                 <div className="flex items-center gap-2 flex-1">
-                    <Badge variant={isSuccess ? 'default' : 'destructive'}>
-                        {response.status}
-                    </Badge>
+                    <Badge variant={isSuccess ? 'default' : 'destructive'}>{response.status}</Badge>
                     <Badge variant="outline" className="gap-1">
                         <KindIcon className="w-3 h-3" />
                         {response.kind}
                     </Badge>
                 </div>
-                <span className="text-xs text-muted-foreground">
-                    {response.operation}
-                </span>
+                <span className="text-xs text-muted-foreground">{response.operation}</span>
             </div>
 
             {/* Body */}
@@ -111,9 +109,7 @@ export function OperationResponseDisplay({ response }: OperationResponseProps) {
                     <div className="flex items-center gap-2">
                         <Hash className="w-3.5 h-3.5 text-muted-foreground" />
                         <span className="text-muted-foreground text-xs">Goal ID:</span>
-                        <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono">
-                            {response.goal_id}
-                        </code>
+                        <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono">{response.goal_id}</code>
                     </div>
                 )}
 

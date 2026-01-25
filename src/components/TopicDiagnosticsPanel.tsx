@@ -38,7 +38,10 @@ function formatQos(qos: QosProfile): string {
 /**
  * Check if QoS profiles are compatible between publishers and subscribers
  */
-function checkQosCompatibility(publishers: TopicEndpoint[], subscribers: TopicEndpoint[]): {
+function checkQosCompatibility(
+    publishers: TopicEndpoint[],
+    subscribers: TopicEndpoint[]
+): {
     compatible: boolean;
     warning?: string;
 } {
@@ -47,8 +50,8 @@ function checkQosCompatibility(publishers: TopicEndpoint[], subscribers: TopicEn
     }
 
     // Check reliability mismatch (RELIABLE sub needs RELIABLE pub)
-    const reliableSubs = subscribers.filter(s => s.qos.reliability === 'reliable');
-    const bestEffortPubs = publishers.filter(p => p.qos.reliability === 'best_effort');
+    const reliableSubs = subscribers.filter((s) => s.qos.reliability === 'reliable');
+    const bestEffortPubs = publishers.filter((p) => p.qos.reliability === 'best_effort');
 
     if (reliableSubs.length > 0 && bestEffortPubs.length > 0) {
         return {
@@ -58,8 +61,8 @@ function checkQosCompatibility(publishers: TopicEndpoint[], subscribers: TopicEn
     }
 
     // Check durability mismatch (TRANSIENT_LOCAL sub may not get late-joining data from VOLATILE pub)
-    const transientSubs = subscribers.filter(s => s.qos.durability === 'transient_local');
-    const volatilePubs = publishers.filter(p => p.qos.durability === 'volatile');
+    const transientSubs = subscribers.filter((s) => s.qos.durability === 'transient_local');
+    const volatilePubs = publishers.filter((p) => p.qos.durability === 'volatile');
 
     if (transientSubs.length > 0 && volatilePubs.length > 0) {
         return {
@@ -89,11 +92,7 @@ function ConnectionStatus({ topic }: { topic: ComponentTopic }) {
         <XCircle className="w-4 h-4 text-muted-foreground" />
     );
 
-    const statusText = hasData
-        ? 'Active'
-        : pubCount > 0
-            ? 'Waiting for data'
-            : 'No publishers';
+    const statusText = hasData ? 'Active' : pubCount > 0 ? 'Waiting for data' : 'No publishers';
 
     return (
         <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
@@ -118,10 +117,12 @@ function ConnectionStatus({ topic }: { topic: ComponentTopic }) {
 
             {/* QoS Warning */}
             {qosCheck.warning && (
-                <div className={cn(
-                    "flex items-start gap-2 text-xs p-2 rounded",
-                    qosCheck.compatible ? "bg-amber-500/10 text-amber-600" : "bg-destructive/10 text-destructive"
-                )}>
+                <div
+                    className={cn(
+                        'flex items-start gap-2 text-xs p-2 rounded',
+                        qosCheck.compatible ? 'bg-amber-500/10 text-amber-600' : 'bg-destructive/10 text-destructive'
+                    )}
+                >
                     <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                     <span>{qosCheck.warning}</span>
                 </div>
@@ -145,9 +146,7 @@ function QosDetails({ publishers, subscribers }: { publishers?: TopicEndpoint[];
             <CollapsibleTrigger asChild>
                 <Button variant="ghost" size="sm" className="w-full justify-between h-8 px-2">
                     <span className="text-xs font-medium">QoS Details</span>
-                    <span className="text-xs text-muted-foreground">
-                        {isOpen ? 'Hide' : 'Show'}
-                    </span>
+                    <span className="text-xs text-muted-foreground">{isOpen ? 'Hide' : 'Show'}</span>
                 </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-3 pt-2">
@@ -156,7 +155,10 @@ function QosDetails({ publishers, subscribers }: { publishers?: TopicEndpoint[];
                         <div className="text-xs font-medium text-muted-foreground mb-1">Publishers</div>
                         <div className="space-y-1">
                             {publishers.map((pub, idx) => (
-                                <div key={idx} className="flex items-center justify-between text-xs p-1.5 rounded bg-muted/50">
+                                <div
+                                    key={idx}
+                                    className="flex items-center justify-between text-xs p-1.5 rounded bg-muted/50"
+                                >
                                     <span className="font-mono truncate">{pub.fqn}</span>
                                     <span className="text-muted-foreground">{formatQos(pub.qos)}</span>
                                 </div>
@@ -169,7 +171,10 @@ function QosDetails({ publishers, subscribers }: { publishers?: TopicEndpoint[];
                         <div className="text-xs font-medium text-muted-foreground mb-1">Subscribers</div>
                         <div className="space-y-1">
                             {subscribers.map((sub, idx) => (
-                                <div key={idx} className="flex items-center justify-between text-xs p-1.5 rounded bg-muted/50">
+                                <div
+                                    key={idx}
+                                    className="flex items-center justify-between text-xs p-1.5 rounded bg-muted/50"
+                                >
                                     <span className="font-mono truncate">{sub.fqn}</span>
                                     <span className="text-muted-foreground">{formatQos(sub.qos)}</span>
                                 </div>
@@ -192,9 +197,7 @@ export function TopicDiagnosticsPanel({
     isRefreshing = false,
     onRefresh,
 }: TopicDiagnosticsPanelProps) {
-    const [publishValue, setPublishValue] = useState<unknown>(
-        topic.type_info?.default_value || topic.data || {}
-    );
+    const [publishValue, setPublishValue] = useState<unknown>(topic.type_info?.default_value || topic.data || {});
 
     const hasData = topic.status === 'data' && topic.data !== null && topic.data !== undefined;
     const canPublish = !!(topic.type || topic.type_info || topic.data);
@@ -210,10 +213,7 @@ export function TopicDiagnosticsPanel({
             <CardHeader>
                 <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
-                        <Radio className={cn(
-                            "w-5 h-5 shrink-0",
-                            hasData ? "text-primary" : "text-muted-foreground"
-                        )} />
+                        <Radio className={cn('w-5 h-5 shrink-0', hasData ? 'text-primary' : 'text-muted-foreground')} />
                         <div>
                             <div className="flex items-center gap-2 flex-wrap">
                                 <CardTitle className="text-base">{topic.topic}</CardTitle>
@@ -228,13 +228,8 @@ export function TopicDiagnosticsPanel({
                             </CardDescription>
                         </div>
                     </div>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={onRefresh}
-                        disabled={isRefreshing}
-                    >
-                        <RefreshCw className={cn("w-4 h-4 mr-2", isRefreshing && "animate-spin")} />
+                    <Button variant="outline" size="sm" onClick={onRefresh} disabled={isRefreshing}>
+                        <RefreshCw className={cn('w-4 h-4 mr-2', isRefreshing && 'animate-spin')} />
                         Refresh
                     </Button>
                 </div>
@@ -252,12 +247,7 @@ export function TopicDiagnosticsPanel({
                     <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Last Received Value</span>
                         {hasData && (
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={handleCopyFromLast}
-                                className="h-7 text-xs"
-                            >
+                            <Button variant="ghost" size="sm" onClick={handleCopyFromLast} className="h-7 text-xs">
                                 <Copy className="w-3 h-3 mr-1" />
                                 Copy to Publish
                             </Button>

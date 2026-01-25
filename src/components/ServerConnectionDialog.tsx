@@ -56,9 +56,7 @@ export function ServerConnectionDialog({ open, onOpenChange }: ServerConnectionD
                         </div>
                         <div>
                             <DialogTitle>Connect to SOVD Server</DialogTitle>
-                            <DialogDescription>
-                                Enter the URL and base endpoint of your SOVD server
-                            </DialogDescription>
+                            <DialogDescription>Enter the URL and base endpoint of your SOVD server</DialogDescription>
                         </div>
                     </div>
                 </DialogHeader>
@@ -107,10 +105,7 @@ export function ServerConnectionDialog({ open, onOpenChange }: ServerConnectionD
                 </div>
 
                 <DialogFooter>
-                    <Button
-                        onClick={handleConnect}
-                        disabled={isConnecting || !url.trim()}
-                    >
+                    <Button onClick={handleConnect} disabled={isConnecting || !url.trim()}>
                         {isConnecting ? (
                             <>
                                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />

@@ -11,13 +11,7 @@ interface DataFolderPanelProps {
 }
 
 export function DataFolderPanel({ basePath }: DataFolderPanelProps) {
-    const {
-        rootEntities,
-        selectEntity,
-        loadChildren,
-        expandedPaths,
-        toggleExpanded,
-    } = useAppStore(
+    const { rootEntities, selectEntity, loadChildren, expandedPaths, toggleExpanded } = useAppStore(
         useShallow((state: AppState) => ({
             client: state.client,
             rootEntities: state.rootEntities,
@@ -30,7 +24,7 @@ export function DataFolderPanel({ basePath }: DataFolderPanelProps) {
 
     // Find the data folder node in the tree
     const dataFolderPath = `${basePath}/data`;
-    const findNode = useCallback((nodes: typeof rootEntities, path: string): typeof rootEntities[0] | null => {
+    const findNode = useCallback((nodes: typeof rootEntities, path: string): (typeof rootEntities)[0] | null => {
         for (const node of nodes) {
             if (node.path === path) return node;
             if (node.children) {
@@ -56,14 +50,17 @@ export function DataFolderPanel({ basePath }: DataFolderPanelProps) {
         loadChildren(dataFolderPath);
     }, [dataFolderPath, loadChildren]);
 
-    const handleTopicClick = useCallback((topicPath: string) => {
-        // Expand the data folder if not expanded
-        if (!expandedPaths.includes(dataFolderPath)) {
-            toggleExpanded(dataFolderPath);
-        }
-        // Navigate to topic
-        selectEntity(topicPath);
-    }, [dataFolderPath, expandedPaths, toggleExpanded, selectEntity]);
+    const handleTopicClick = useCallback(
+        (topicPath: string) => {
+            // Expand the data folder if not expanded
+            if (!expandedPaths.includes(dataFolderPath)) {
+                toggleExpanded(dataFolderPath);
+            }
+            // Navigate to topic
+            selectEntity(topicPath);
+        },
+        [dataFolderPath, expandedPaths, toggleExpanded, selectEntity]
+    );
 
     if (isLoading) {
         return (
@@ -82,15 +79,9 @@ export function DataFolderPanel({ basePath }: DataFolderPanelProps) {
                     <div className="flex items-center gap-2">
                         <Database className="w-5 h-5 text-muted-foreground" />
                         <CardTitle className="text-base">Topics</CardTitle>
-                        <span className="text-xs text-muted-foreground">
-                            ({topics.length} topics)
-                        </span>
+                        <span className="text-xs text-muted-foreground">({topics.length} topics)</span>
                     </div>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleRefresh}
-                    >
+                    <Button variant="ghost" size="sm" onClick={handleRefresh}>
                         <RefreshCw className="w-4 h-4" />
                     </Button>
                 </div>
@@ -104,7 +95,9 @@ export function DataFolderPanel({ basePath }: DataFolderPanelProps) {
                     <div className="space-y-2">
                         {topics.map((topic) => {
                             // Extract direction info from topic data
-                            const topicData = topic.data as { isPublisher?: boolean; isSubscriber?: boolean; type?: string } | undefined;
+                            const topicData = topic.data as
+                                | { isPublisher?: boolean; isSubscriber?: boolean; type?: string }
+                                | undefined;
                             const isPublisher = topicData?.isPublisher ?? false;
                             const isSubscriber = topicData?.isSubscriber ?? false;
                             const topicType = topicData?.type || 'Unknown';
@@ -118,9 +111,7 @@ export function DataFolderPanel({ basePath }: DataFolderPanelProps) {
                                     <Radio className="w-4 h-4 text-muted-foreground shrink-0" />
                                     <div className="min-w-0 flex-1">
                                         <div className="font-mono text-sm truncate">{topic.name}</div>
-                                        <div className="text-xs text-muted-foreground truncate">
-                                            {topicType}
-                                        </div>
+                                        <div className="text-xs text-muted-foreground truncate">{topicType}</div>
                                     </div>
                                     {/* Direction indicators */}
                                     <div className="flex items-center gap-1">

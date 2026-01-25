@@ -1,6 +1,18 @@
 import { useState } from 'react';
 import { useShallow } from 'zustand/shallow';
-import { Copy, Loader2, Radio, ChevronRight, ArrowUp, ArrowDown, Database, Zap, Settings, RefreshCw, Box } from 'lucide-react';
+import {
+    Copy,
+    Loader2,
+    Radio,
+    ChevronRight,
+    ArrowUp,
+    ArrowDown,
+    Database,
+    Zap,
+    Settings,
+    RefreshCw,
+    Box,
+} from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -207,9 +219,7 @@ function DataTabContent({
     return (
         <Card>
             <CardContent className="pt-6">
-                <div className="text-center text-muted-foreground py-4">
-                    No topics available for this component.
-                </div>
+                <div className="text-center text-muted-foreground py-4">No topics available for this component.</div>
             </CardContent>
         </Card>
     );
@@ -297,7 +307,6 @@ function VirtualFolderContent({ folderType, componentId, basePath }: VirtualFold
     }
 }
 
-
 interface EntityDetailPanelProps {
     onConnectClick: () => void;
 }
@@ -367,14 +376,17 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
         const hasTopicData = isTopic && selectedEntity.topicData;
         // Prefer full topics array (with QoS, type info) over topicsInfo (names only)
         const hasTopicsArray = isComponent && selectedEntity.topics && selectedEntity.topics.length > 0;
-        const hasTopicsInfo = isComponent && !hasTopicsArray && selectedEntity.topicsInfo &&
+        const hasTopicsInfo =
+            isComponent &&
+            !hasTopicsArray &&
+            selectedEntity.topicsInfo &&
             ((selectedEntity.topicsInfo.publishes?.length ?? 0) > 0 ||
                 (selectedEntity.topicsInfo.subscribes?.length ?? 0) > 0);
         const hasError = !!selectedEntity.error;
 
         // Extract component ID from path for component views
         const pathParts = selectedPath.split('/').filter(Boolean);
-        const componentId = pathParts.length >= 2 ? pathParts[1] : pathParts[0];
+        const componentId = (pathParts.length >= 2 ? pathParts[1] : pathParts[0]) ?? selectedEntity.id;
 
         return (
             <main className="flex-1 overflow-y-auto p-6 bg-background">
@@ -425,10 +437,11 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
                                             <button
                                                 key={tab.id}
                                                 onClick={() => setActiveTab(tab.id)}
-                                                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${isActive
+                                                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                                                    isActive
                                                         ? 'bg-background text-foreground shadow-sm'
                                                         : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
-                                                    }`}
+                                                }`}
                                             >
                                                 <TabIcon className="w-4 h-4" />
                                                 {tab.label}
@@ -446,7 +459,9 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
                             <CardContent className="pt-6">
                                 <div className="flex flex-col items-center justify-center p-6 text-center text-muted-foreground">
                                     <p className="font-medium text-destructive">Failed to load entity details</p>
-                                    <p className="text-sm mt-2">The server might be unreachable or the entity might not exist.</p>
+                                    <p className="text-sm mt-2">
+                                        The server might be unreachable or the entity might not exist.
+                                    </p>
                                 </div>
                             </CardContent>
                         </Card>

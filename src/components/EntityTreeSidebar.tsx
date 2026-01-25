@@ -40,12 +40,7 @@ function filterTree(nodes: EntityTreeNodeType[], query: string): EntityTreeNodeT
 export function EntityTreeSidebar({ onSettingsClick }: EntityTreeSidebarProps) {
     const [searchQuery, setSearchQuery] = useState('');
 
-    const {
-        isConnected,
-        serverUrl,
-        rootEntities,
-        loadRootEntities,
-    } = useAppStore(
+    const { isConnected, serverUrl, rootEntities, loadRootEntities } = useAppStore(
         useShallow((state) => ({
             isConnected: state.isConnected,
             serverUrl: state.serverUrl,
@@ -100,11 +95,7 @@ export function EntityTreeSidebar({ onSettingsClick }: EntityTreeSidebarProps) {
                             </Button>
                         </>
                     ) : (
-                        <Button
-                            variant="default"
-                            size="sm"
-                            onClick={onSettingsClick}
-                        >
+                        <Button variant="default" size="sm" onClick={onSettingsClick}>
                             Connect
                         </Button>
                     )}
@@ -116,9 +107,7 @@ export function EntityTreeSidebar({ onSettingsClick }: EntityTreeSidebarProps) {
                 <div className="px-4 py-2 border-b">
                     <div className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full bg-green-500" />
-                        <span className="text-xs text-muted-foreground truncate">
-                            {serverUrl}
-                        </span>
+                        <span className="text-xs text-muted-foreground truncate">{serverUrl}</span>
                     </div>
                 </div>
             )}
@@ -157,9 +146,7 @@ export function EntityTreeSidebar({ onSettingsClick }: EntityTreeSidebarProps) {
                     <div className="flex flex-col items-center justify-center h-32 text-muted-foreground text-sm">
                         <Search className="w-8 h-8 mb-2 opacity-50" />
                         <p>No entities found</p>
-                        {searchQuery && (
-                            <p className="text-xs mt-1">Try a different search term</p>
-                        )}
+                        {searchQuery && <p className="text-xs mt-1">Try a different search term</p>}
                     </div>
                 ) : (
                     <div className="space-y-0.5">

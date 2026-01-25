@@ -11,12 +11,12 @@ Security vulnerabilities are taken seriously. I appreciate your efforts to respo
 Instead, please report them using one of the following methods:
 
 1. **Preferred: GitHub Security Advisories** (recommended)
-   - Go to the [Security tab](https://github.com/selfpatch/sovd_web_ui/security/advisories/new) of this repository
-   - Click "Report a vulnerability"
-   - Fill out the form with details about the vulnerability
+    - Go to the [Security tab](https://github.com/selfpatch/sovd_web_ui/security/advisories/new) of this repository
+    - Click "Report a vulnerability"
+    - Fill out the form with details about the vulnerability
 
 2. **Alternative: Private email**
-   - If you cannot use GitHub's private reporting, contact the project maintainers via the contact email listed on the GitHub profile
+    - If you cannot use GitHub's private reporting, contact the project maintainers via the contact email listed on the GitHub profile
 
 ### What to Include in Your Report
 
