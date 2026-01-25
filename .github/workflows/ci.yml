@@ -52,4 +52,3 @@ jobs:
 
             - name: Build Docker image
               run: docker build -t sovd-web-ui:test -f Dockerfile .
-

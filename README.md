@@ -49,10 +49,10 @@ Then open http://localhost:8080 in your browser.
 
 Docker images are automatically published to GitHub Container Registry via GitHub Actions:
 
-| Trigger | Image Tags |
-|---------|------------|
-| Push/merge to `main` | `latest`, `sha-<commit>` |
-| Git tag `v1.2.3` | `1.2.3`, `1.2`, `1`, `sha-<commit>` |
+| Trigger              | Image Tags                          |
+| -------------------- | ----------------------------------- |
+| Push/merge to `main` | `latest`, `sha-<commit>`            |
+| Git tag `v1.2.3`     | `1.2.3`, `1.2`, `1`, `sha-<commit>` |
 
 > **Note:** Images are currently built for `linux/amd64` only. ARM64 support is planned.
 
