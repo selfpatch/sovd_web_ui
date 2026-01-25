@@ -453,3 +453,307 @@ export interface ComponentWithOperations {
     /** List of available operations (services + actions) */
     operations?: Operation[];
 }
+
+// =============================================================================
+// EXECUTIONS (SOVD-compliant Operations Model)
+// =============================================================================
+
+/**
+ * Execution status values for SOVD operations
+ */
+export type ExecutionStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled';
+
+/**
+ * Execution resource representing an operation invocation (SOVD-compliant)
+ */
+export interface Execution {
+    /** Unique execution identifier */
+    id: string;
+    /** Current execution status */
+    status: ExecutionStatus;
+    /** ISO 8601 timestamp when execution was created */
+    created_at: string;
+    /** ISO 8601 timestamp when execution started running */
+    started_at?: string;
+    /** ISO 8601 timestamp when execution finished */
+    finished_at?: string;
+    /** Result data for completed executions */
+    result?: unknown;
+    /** Error message for failed executions */
+    error?: string;
+    /** Last feedback for action executions */
+    last_feedback?: unknown;
+}
+
+/**
+ * Request to create a new execution
+ */
+export interface CreateExecutionRequest {
+    /** Optional type override (auto-detected if not provided) */
+    type?: string;
+    /** Input data for the operation (request for services, goal for actions) */
+    input?: unknown;
+}
+
+/**
+ * Response from POST /{entity}/operations/{op}/executions
+ */
+export interface CreateExecutionResponse {
+    /** Execution ID for tracking */
+    id: string;
+    /** Initial execution status */
+    status: ExecutionStatus;
+    /** Operation kind (service or action) */
+    kind: OperationKind;
+    /** Result data (for synchronous service calls) */
+    result?: unknown;
+    /** Error message if execution creation failed */
+    error?: string;
+}
+
+/**
+ * Response from GET /{entity}/operations/{op}/executions
+ */
+export interface ListExecutionsResponse {
+    /** Array of executions */
+    items: Execution[];
+    /** Total count of executions */
+    count: number;
+}
+
+// =============================================================================
+// APPS (ROS 2 Nodes as SOVD Apps)
+// =============================================================================
+
+/**
+ * App entity representing a ROS 2 node
+ */
+export interface App extends SovdEntity {
+    /** ROS 2 node name */
+    node_name: string;
+    /** ROS 2 namespace */
+    namespace: string;
+    /** Fully qualified name (namespace + node_name) */
+    fqn: string;
+    /** Parent component ID */
+    component_id?: string;
+}
+
+/**
+ * App capabilities response
+ */
+export interface AppCapabilities {
+    /** App identifier */
+    id: string;
+    /** FQN of the node */
+    fqn: string;
+    /** Available resource collections */
+    resources: {
+        data?: boolean;
+        operations?: boolean;
+        configurations?: boolean;
+        faults?: boolean;
+    };
+    /** Links to related resources */
+    links?: Record<string, string>;
+}
+
+// =============================================================================
+// FUNCTIONS (Capability Groupings)
+// =============================================================================
+
+/**
+ * Function entity representing a capability grouping
+ */
+export interface Function extends SovdEntity {
+    /** Description of the function */
+    description?: string;
+    /** IDs of apps that host this function */
+    hosts: string[];
+}
+
+/**
+ * Function capabilities response
+ */
+export interface FunctionCapabilities {
+    /** Function identifier */
+    id: string;
+    /** Function description */
+    description?: string;
+    /** Available resource collections */
+    resources: {
+        data?: boolean;
+        operations?: boolean;
+        hosts?: boolean;
+    };
+    /** Links to related resources */
+    links?: Record<string, string>;
+}
+
+// =============================================================================
+// FAULTS (SOVD Diagnostic Trouble Codes)
+// =============================================================================
+
+/**
+ * Fault severity levels
+ */
+export type FaultSeverity = 'info' | 'warning' | 'error' | 'critical';
+
+/**
+ * Fault status values
+ */
+export type FaultStatus = 'active' | 'pending' | 'cleared';
+
+/**
+ * Fault entity representing a diagnostic trouble code
+ */
+export interface Fault {
+    /** Unique fault code identifier */
+    code: string;
+    /** Human-readable fault message */
+    message: string;
+    /** Fault severity level */
+    severity: FaultSeverity;
+    /** Current fault status */
+    status: FaultStatus;
+    /** ISO 8601 timestamp when fault was detected */
+    timestamp: string;
+    /** Entity ID where fault originated */
+    entity_id: string;
+    /** Entity type (component, app, etc.) */
+    entity_type: string;
+    /** Additional fault parameters */
+    parameters?: Record<string, unknown>;
+    /** Whether snapshots are available for this fault */
+    has_snapshots?: boolean;
+}
+
+/**
+ * Response from GET /faults or GET /{entity}/faults
+ */
+export interface ListFaultsResponse {
+    /** Array of faults */
+    items: Fault[];
+    /** Total count of faults */
+    count: number;
+}
+
+/**
+ * Fault snapshot for debugging
+ */
+export interface FaultSnapshot {
+    /** Snapshot identifier */
+    id: string;
+    /** ISO 8601 timestamp when snapshot was captured */
+    timestamp: string;
+    /** Captured data at time of fault */
+    data: Record<string, unknown>;
+}
+
+/**
+ * Response from GET /{entity}/faults/{code}/snapshots
+ */
+export interface ListSnapshotsResponse {
+    /** Array of snapshots */
+    items: FaultSnapshot[];
+    /** Total count of snapshots */
+    count: number;
+}
+
+// =============================================================================
+// SERVER CAPABILITIES (SOVD Discovery)
+// =============================================================================
+
+/**
+ * Server capabilities from GET /
+ */
+export interface ServerCapabilities {
+    /** SOVD specification version */
+    sovd_version: string;
+    /** Server implementation name */
+    server_name?: string;
+    /** Server implementation version */
+    server_version?: string;
+    /** Supported features */
+    supported_features: string[];
+    /** Entry points (resource collection URLs) */
+    entry_points: Record<string, string>;
+}
+
+/**
+ * Version info from GET /version-info
+ */
+export interface VersionInfo {
+    /** SOVD specification version */
+    sovd_version: string;
+    /** Server implementation version */
+    implementation_version?: string;
+    /** Additional version details */
+    details?: Record<string, unknown>;
+}
+
+// =============================================================================
+// AUTHENTICATION (Optional SOVD Auth)
+// =============================================================================
+
+/**
+ * Authentication request for client_credentials grant
+ */
+export interface AuthRequest {
+    /** Grant type (client_credentials) */
+    grant_type: 'client_credentials';
+    /** Client identifier */
+    client_id: string;
+    /** Client secret */
+    client_secret: string;
+}
+
+/**
+ * Authentication response with tokens
+ */
+export interface AuthResponse {
+    /** JWT access token */
+    access_token: string;
+    /** Token type (Bearer) */
+    token_type: 'Bearer';
+    /** Access token expiry in seconds */
+    expires_in: number;
+    /** Refresh token for obtaining new access tokens */
+    refresh_token?: string;
+}
+
+/**
+ * Token refresh request
+ */
+export interface TokenRefreshRequest {
+    /** Grant type for refresh */
+    grant_type: 'refresh_token';
+    /** Refresh token */
+    refresh_token: string;
+}
+
+/**
+ * Token revocation request
+ */
+export interface TokenRevokeRequest {
+    /** Token to revoke */
+    token: string;
+    /** Token type hint */
+    token_type_hint?: 'refresh_token' | 'access_token';
+}
+
+// =============================================================================
+// GENERIC ERROR (SOVD Error Format)
+// =============================================================================
+
+/**
+ * SOVD-compliant generic error response
+ */
+export interface SovdError {
+    /** Error code identifier */
+    error_code: string;
+    /** Human-readable error message */
+    message: string;
+    /** Additional error parameters */
+    parameters?: Record<string, unknown>;
+}

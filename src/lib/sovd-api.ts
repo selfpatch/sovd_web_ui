@@ -11,12 +11,28 @@ import type {
     ResetConfigurationResponse,
     ResetAllConfigurationsResponse,
     Operation,
+    // Legacy operation types (kept for backward compatibility)
     InvokeOperationRequest,
     OperationResponse,
     ActionGoalStatus,
     AllActionGoalsStatus,
     ActionGoalResult,
     ActionCancelResponse,
+    // New SOVD-compliant types
+    Execution,
+    CreateExecutionRequest,
+    CreateExecutionResponse,
+    ListExecutionsResponse,
+    App,
+    AppCapabilities,
+    Function,
+    FunctionCapabilities,
+    Fault,
+    ListFaultsResponse,
+    ListSnapshotsResponse,
+    ServerCapabilities,
+    VersionInfo,
+    SovdError,
 } from './types';
 
 /**
@@ -538,24 +554,22 @@ export class SovdApiClient {
     }
 
     // ===========================================================================
-    // OPERATIONS API (ROS 2 Services & Actions)
+    // OPERATIONS API (ROS 2 Services & Actions) - SOVD Executions Model
     // ===========================================================================
 
     /**
-     * List all operations (services + actions) for a component
-     * This data comes from the component operations endpoint
-     * @param componentId Component ID
+     * List all operations (services + actions) for an entity (component or app)
+     * @param entityType Entity type ('components' or 'apps')
+     * @param entityId Entity ID
      */
-    async listOperations(componentId: string): Promise<Operation[]> {
-        // Fetch from dedicated operations endpoint which includes type_info with schema
-        const response = await fetchWithTimeout(this.getUrl(`components/${componentId}/operations`), {
+    async listOperations(entityId: string, entityType: 'components' | 'apps' = 'components'): Promise<Operation[]> {
+        const response = await fetchWithTimeout(this.getUrl(`${entityType}/${entityId}/operations`), {
             method: 'GET',
             headers: { Accept: 'application/json' },
         });
 
         if (!response.ok) {
             if (response.status === 404) {
-                // Component not found or has no operations
                 return [];
             }
             throw new Error(`HTTP ${response.status}`);
@@ -565,18 +579,47 @@ export class SovdApiClient {
     }
 
     /**
-     * Invoke an operation (service call or action goal)
-     * @param componentId Component ID
+     * Get details of a specific operation
+     * @param entityId Entity ID
      * @param operationName Operation name
-     * @param request Request data (request for services, goal for actions)
+     * @param entityType Entity type ('components' or 'apps')
      */
-    async invokeOperation(
-        componentId: string,
+    async getOperation(
+        entityId: string,
         operationName: string,
-        request: InvokeOperationRequest
-    ): Promise<OperationResponse> {
+        entityType: 'components' | 'apps' = 'components'
+    ): Promise<Operation> {
         const response = await fetchWithTimeout(
-            this.getUrl(`components/${componentId}/operations/${encodeURIComponent(operationName)}`),
+            this.getUrl(`${entityType}/${entityId}/operations/${encodeURIComponent(operationName)}`),
+            {
+                method: 'GET',
+                headers: { Accept: 'application/json' },
+            }
+        );
+
+        if (!response.ok) {
+            const errorData = (await response.json().catch(() => ({}))) as SovdError;
+            throw new Error(errorData.message || `HTTP ${response.status}`);
+        }
+
+        return await response.json();
+    }
+
+    /**
+     * Create an execution (invoke an operation) - SOVD-compliant
+     * @param entityId Entity ID (component or app)
+     * @param operationName Operation name
+     * @param request Execution request with input data
+     * @param entityType Entity type ('components' or 'apps')
+     */
+    async createExecution(
+        entityId: string,
+        operationName: string,
+        request: CreateExecutionRequest,
+        entityType: 'components' | 'apps' = 'components'
+    ): Promise<CreateExecutionResponse> {
+        const response = await fetchWithTimeout(
+            this.getUrl(`${entityType}/${entityId}/operations/${encodeURIComponent(operationName)}/executions`),
             {
                 method: 'POST',
                 headers: {
@@ -585,57 +628,30 @@ export class SovdApiClient {
                 },
                 body: JSON.stringify(request),
             },
-            30000 // 30 second timeout for operations
+            30000
         );
 
         if (!response.ok) {
-            const errorData = (await response.json().catch(() => ({}))) as {
-                error?: string;
-                details?: string;
-            };
-            throw new Error(errorData.error || errorData.details || `HTTP ${response.status}`);
+            const errorData = (await response.json().catch(() => ({}))) as SovdError;
+            throw new Error(errorData.message || `HTTP ${response.status}`);
         }
 
         return await response.json();
     }
 
     /**
-     * Get action goal status
-     * @param componentId Component ID
-     * @param operationName Action name
-     * @param goalId Optional specific goal ID
+     * List all executions for an operation
+     * @param entityId Entity ID
+     * @param operationName Operation name
+     * @param entityType Entity type ('components' or 'apps')
      */
-    async getActionStatus(componentId: string, operationName: string, goalId?: string): Promise<ActionGoalStatus> {
-        const url = goalId
-            ? this.getUrl(
-                  `components/${componentId}/operations/${encodeURIComponent(operationName)}/status?goal_id=${encodeURIComponent(goalId)}`
-              )
-            : this.getUrl(`components/${componentId}/operations/${encodeURIComponent(operationName)}/status`);
-
-        const response = await fetchWithTimeout(url, {
-            method: 'GET',
-            headers: { Accept: 'application/json' },
-        });
-
-        if (!response.ok) {
-            const errorData = (await response.json().catch(() => ({}))) as {
-                error?: string;
-                details?: string;
-            };
-            throw new Error(errorData.error || errorData.details || `HTTP ${response.status}`);
-        }
-
-        return await response.json();
-    }
-
-    /**
-     * Get all action goals status for an operation
-     * @param componentId Component ID
-     * @param operationName Action name
-     */
-    async getAllActionGoalsStatus(componentId: string, operationName: string): Promise<AllActionGoalsStatus> {
+    async listExecutions(
+        entityId: string,
+        operationName: string,
+        entityType: 'components' | 'apps' = 'components'
+    ): Promise<ListExecutionsResponse> {
         const response = await fetchWithTimeout(
-            this.getUrl(`components/${componentId}/operations/${encodeURIComponent(operationName)}/status?all=true`),
+            this.getUrl(`${entityType}/${entityId}/operations/${encodeURIComponent(operationName)}/executions`),
             {
                 method: 'GET',
                 headers: { Accept: 'application/json' },
@@ -643,26 +659,29 @@ export class SovdApiClient {
         );
 
         if (!response.ok) {
-            const errorData = (await response.json().catch(() => ({}))) as {
-                error?: string;
-                details?: string;
-            };
-            throw new Error(errorData.error || errorData.details || `HTTP ${response.status}`);
+            const errorData = (await response.json().catch(() => ({}))) as SovdError;
+            throw new Error(errorData.message || `HTTP ${response.status}`);
         }
 
         return await response.json();
     }
 
     /**
-     * Get action goal result (for completed goals)
-     * @param componentId Component ID
-     * @param operationName Action name
-     * @param goalId Goal UUID
+     * Get execution status by ID
+     * @param entityId Entity ID
+     * @param operationName Operation name
+     * @param executionId Execution ID
+     * @param entityType Entity type ('components' or 'apps')
      */
-    async getActionResult(componentId: string, operationName: string, goalId: string): Promise<ActionGoalResult> {
+    async getExecution(
+        entityId: string,
+        operationName: string,
+        executionId: string,
+        entityType: 'components' | 'apps' = 'components'
+    ): Promise<Execution> {
         const response = await fetchWithTimeout(
             this.getUrl(
-                `components/${componentId}/operations/${encodeURIComponent(operationName)}/result?goal_id=${encodeURIComponent(goalId)}`
+                `${entityType}/${entityId}/operations/${encodeURIComponent(operationName)}/executions/${encodeURIComponent(executionId)}`
             ),
             {
                 method: 'GET',
@@ -671,26 +690,29 @@ export class SovdApiClient {
         );
 
         if (!response.ok) {
-            const errorData = (await response.json().catch(() => ({}))) as {
-                error?: string;
-                details?: string;
-            };
-            throw new Error(errorData.error || errorData.details || `HTTP ${response.status}`);
+            const errorData = (await response.json().catch(() => ({}))) as SovdError;
+            throw new Error(errorData.message || `HTTP ${response.status}`);
         }
 
         return await response.json();
     }
 
     /**
-     * Cancel an action goal
-     * @param componentId Component ID
-     * @param operationName Action name
-     * @param goalId Goal UUID to cancel
+     * Cancel an execution (for actions)
+     * @param entityId Entity ID
+     * @param operationName Operation name
+     * @param executionId Execution ID
+     * @param entityType Entity type ('components' or 'apps')
      */
-    async cancelAction(componentId: string, operationName: string, goalId: string): Promise<ActionCancelResponse> {
+    async cancelExecution(
+        entityId: string,
+        operationName: string,
+        executionId: string,
+        entityType: 'components' | 'apps' = 'components'
+    ): Promise<Execution> {
         const response = await fetchWithTimeout(
             this.getUrl(
-                `components/${componentId}/operations/${encodeURIComponent(operationName)}?goal_id=${encodeURIComponent(goalId)}`
+                `${entityType}/${entityId}/operations/${encodeURIComponent(operationName)}/executions/${encodeURIComponent(executionId)}`
             ),
             {
                 method: 'DELETE',
@@ -699,11 +721,564 @@ export class SovdApiClient {
         );
 
         if (!response.ok) {
-            const errorData = (await response.json().catch(() => ({}))) as {
-                error?: string;
-                details?: string;
+            const errorData = (await response.json().catch(() => ({}))) as SovdError;
+            throw new Error(errorData.message || `HTTP ${response.status}`);
+        }
+
+        return await response.json();
+    }
+
+    // ===========================================================================
+    // LEGACY OPERATIONS API (for backward compatibility)
+    // These methods work with the old endpoint pattern and will be deprecated
+    // ===========================================================================
+
+    /**
+     * @deprecated Use createExecution() instead
+     * Invoke an operation (service call or action goal)
+     */
+    async invokeOperation(
+        componentId: string,
+        operationName: string,
+        request: InvokeOperationRequest
+    ): Promise<OperationResponse> {
+        // Map to new execution API
+        const execRequest: CreateExecutionRequest = {
+            type: request.type,
+            input: request.request ?? request.goal,
+        };
+
+        const response = await this.createExecution(componentId, operationName, execRequest);
+
+        // Map response back to legacy format
+        if (response.kind === 'service') {
+            return {
+                status: response.error ? 'error' : 'success',
+                kind: 'service',
+                component_id: componentId,
+                operation: operationName,
+                response: response.result,
+                error: response.error,
             };
-            throw new Error(errorData.error || errorData.details || `HTTP ${response.status}`);
+        } else {
+            return {
+                status: response.error ? 'error' : 'success',
+                kind: 'action',
+                component_id: componentId,
+                operation: operationName,
+                goal_id: response.id,
+                goal_status: response.status === 'running' ? 'accepted' : 'rejected',
+                error: response.error,
+            };
+        }
+    }
+
+    /**
+     * @deprecated Use getExecution() instead
+     * Get action goal status
+     */
+    async getActionStatus(componentId: string, operationName: string, goalId?: string): Promise<ActionGoalStatus> {
+        if (!goalId) {
+            // Get latest execution if no goalId provided
+            const executions = await this.listExecutions(componentId, operationName);
+            if (executions.items.length === 0) {
+                throw new Error('No executions found');
+            }
+            const latest = executions.items[0]!;
+            return this.mapExecutionToActionStatus(latest, operationName);
+        }
+
+        const execution = await this.getExecution(componentId, operationName, goalId);
+        return this.mapExecutionToActionStatus(execution, operationName);
+    }
+
+    /**
+     * @deprecated Use listExecutions() instead
+     * Get all action goals status for an operation
+     */
+    async getAllActionGoalsStatus(componentId: string, operationName: string): Promise<AllActionGoalsStatus> {
+        const executions = await this.listExecutions(componentId, operationName);
+        return {
+            action_path: `/${componentId}/${operationName}`,
+            goals: executions.items.map((e) => this.mapExecutionToActionStatus(e, operationName)),
+            count: executions.count,
+        };
+    }
+
+    /**
+     * @deprecated Use getExecution() instead
+     * Get action goal result (for completed goals)
+     */
+    async getActionResult(componentId: string, operationName: string, goalId: string): Promise<ActionGoalResult> {
+        const execution = await this.getExecution(componentId, operationName, goalId);
+        return {
+            goal_id: execution.id,
+            status: this.mapExecutionStatusToActionStatus(execution.status),
+            result: execution.result,
+        };
+    }
+
+    /**
+     * @deprecated Use cancelExecution() instead
+     * Cancel an action goal
+     */
+    async cancelAction(componentId: string, operationName: string, goalId: string): Promise<ActionCancelResponse> {
+        try {
+            const execution = await this.cancelExecution(componentId, operationName, goalId);
+            return {
+                status: execution.status === 'canceled' ? 'canceling' : 'error',
+                goal_id: execution.id,
+                message: execution.status === 'canceled' ? 'Cancellation requested' : 'Failed to cancel',
+            };
+        } catch (error) {
+            return {
+                status: 'error',
+                goal_id: goalId,
+                message: error instanceof Error ? error.message : 'Unknown error',
+            };
+        }
+    }
+
+    // Helper to map execution status to legacy action status
+    private mapExecutionStatusToActionStatus(status: Execution['status']): ActionGoalStatus['status'] {
+        const statusMap: Record<Execution['status'], ActionGoalStatus['status']> = {
+            pending: 'accepted',
+            running: 'executing',
+            succeeded: 'succeeded',
+            failed: 'aborted',
+            canceled: 'canceled',
+        };
+        return statusMap[status];
+    }
+
+    // Helper to map Execution to ActionGoalStatus
+    private mapExecutionToActionStatus(execution: Execution, operationName: string): ActionGoalStatus {
+        return {
+            goal_id: execution.id,
+            status: this.mapExecutionStatusToActionStatus(execution.status),
+            action_path: operationName,
+            action_type: 'unknown',
+            last_feedback: execution.last_feedback,
+        };
+    }
+
+    // ===========================================================================
+    // APPS API (ROS 2 Nodes)
+    // ===========================================================================
+
+    /**
+     * List all apps (ROS 2 nodes) in the system
+     */
+    async listApps(): Promise<App[]> {
+        const response = await fetchWithTimeout(this.getUrl('apps'), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        return await response.json();
+    }
+
+    /**
+     * Get app capabilities
+     * @param appId App identifier
+     */
+    async getApp(appId: string): Promise<AppCapabilities> {
+        const response = await fetchWithTimeout(this.getUrl(`apps/${appId}`), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            const errorData = (await response.json().catch(() => ({}))) as SovdError;
+            throw new Error(errorData.message || `HTTP ${response.status}`);
+        }
+
+        return await response.json();
+    }
+
+    /**
+     * Get all topics (data) for an app
+     * @param appId App identifier
+     */
+    async getAppData(appId: string): Promise<ComponentTopic[]> {
+        const response = await fetchWithTimeout(this.getUrl(`apps/${appId}/data`), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        return await response.json();
+    }
+
+    /**
+     * Get a specific topic for an app
+     * @param appId App identifier
+     * @param topicName Topic name (will be URL encoded)
+     */
+    async getAppDataItem(appId: string, topicName: string): Promise<ComponentTopic> {
+        const response = await fetchWithTimeout(this.getUrl(`apps/${appId}/data/${encodeURIComponent(topicName)}`), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            const errorData = (await response.json().catch(() => ({}))) as SovdError;
+            throw new Error(errorData.message || `HTTP ${response.status}`);
+        }
+
+        return await response.json();
+    }
+
+    /**
+     * Publish to an app topic
+     * @param appId App identifier
+     * @param topicName Topic name
+     * @param request Publish request
+     */
+    async publishToAppTopic(appId: string, topicName: string, request: ComponentTopicPublishRequest): Promise<void> {
+        const response = await fetchWithTimeout(
+            this.getUrl(`apps/${appId}/data/${encodeURIComponent(topicName)}`),
+            {
+                method: 'PUT',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(request),
+            },
+            10000
+        );
+
+        if (!response.ok) {
+            const errorData = (await response.json().catch(() => ({}))) as SovdError;
+            throw new Error(errorData.message || `HTTP ${response.status}`);
+        }
+    }
+
+    /**
+     * Get app dependencies
+     * @param appId App identifier
+     */
+    async getAppDependsOn(appId: string): Promise<string[]> {
+        const response = await fetchWithTimeout(this.getUrl(`apps/${appId}/depends-on`), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            return [];
+        }
+
+        const data = await response.json();
+        return data.items || [];
+    }
+
+    // ===========================================================================
+    // FUNCTIONS API (Capability Groupings)
+    // ===========================================================================
+
+    /**
+     * List all functions
+     */
+    async listFunctions(): Promise<Function[]> {
+        const response = await fetchWithTimeout(this.getUrl('functions'), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        return await response.json();
+    }
+
+    /**
+     * Get function capabilities
+     * @param functionId Function identifier
+     */
+    async getFunction(functionId: string): Promise<FunctionCapabilities> {
+        const response = await fetchWithTimeout(this.getUrl(`functions/${functionId}`), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            const errorData = (await response.json().catch(() => ({}))) as SovdError;
+            throw new Error(errorData.message || `HTTP ${response.status}`);
+        }
+
+        return await response.json();
+    }
+
+    /**
+     * Get apps hosting a function
+     * @param functionId Function identifier
+     */
+    async getFunctionHosts(functionId: string): Promise<string[]> {
+        const response = await fetchWithTimeout(this.getUrl(`functions/${functionId}/hosts`), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            return [];
+        }
+
+        const data = await response.json();
+        return data.items || [];
+    }
+
+    /**
+     * Get aggregated data for a function
+     * @param functionId Function identifier
+     */
+    async getFunctionData(functionId: string): Promise<ComponentTopic[]> {
+        const response = await fetchWithTimeout(this.getUrl(`functions/${functionId}/data`), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            return [];
+        }
+
+        return await response.json();
+    }
+
+    /**
+     * Get aggregated operations for a function
+     * @param functionId Function identifier
+     */
+    async getFunctionOperations(functionId: string): Promise<Operation[]> {
+        const response = await fetchWithTimeout(this.getUrl(`functions/${functionId}/operations`), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            return [];
+        }
+
+        return await response.json();
+    }
+
+    // ===========================================================================
+    // FAULTS API (Diagnostic Trouble Codes)
+    // ===========================================================================
+
+    /**
+     * List all faults across the system
+     */
+    async listAllFaults(): Promise<ListFaultsResponse> {
+        const response = await fetchWithTimeout(this.getUrl('faults'), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        return await response.json();
+    }
+
+    /**
+     * List faults for a specific entity
+     * @param entityType Entity type ('components' or 'apps')
+     * @param entityId Entity identifier
+     */
+    async listEntityFaults(entityType: 'components' | 'apps', entityId: string): Promise<ListFaultsResponse> {
+        const response = await fetchWithTimeout(this.getUrl(`${entityType}/${entityId}/faults`), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                return { items: [], count: 0 };
+            }
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        return await response.json();
+    }
+
+    /**
+     * Get a specific fault by code
+     * @param entityType Entity type ('components' or 'apps')
+     * @param entityId Entity identifier
+     * @param faultCode Fault code
+     */
+    async getFault(entityType: 'components' | 'apps', entityId: string, faultCode: string): Promise<Fault> {
+        const response = await fetchWithTimeout(
+            this.getUrl(`${entityType}/${entityId}/faults/${encodeURIComponent(faultCode)}`),
+            {
+                method: 'GET',
+                headers: { Accept: 'application/json' },
+            }
+        );
+
+        if (!response.ok) {
+            const errorData = (await response.json().catch(() => ({}))) as SovdError;
+            throw new Error(errorData.message || `HTTP ${response.status}`);
+        }
+
+        return await response.json();
+    }
+
+    /**
+     * Clear a specific fault
+     * @param entityType Entity type ('components' or 'apps')
+     * @param entityId Entity identifier
+     * @param faultCode Fault code
+     */
+    async clearFault(entityType: 'components' | 'apps', entityId: string, faultCode: string): Promise<void> {
+        const response = await fetchWithTimeout(
+            this.getUrl(`${entityType}/${entityId}/faults/${encodeURIComponent(faultCode)}`),
+            {
+                method: 'DELETE',
+                headers: { Accept: 'application/json' },
+            }
+        );
+
+        if (!response.ok) {
+            const errorData = (await response.json().catch(() => ({}))) as SovdError;
+            throw new Error(errorData.message || `HTTP ${response.status}`);
+        }
+    }
+
+    /**
+     * Clear all faults for an entity
+     * @param entityType Entity type ('components' or 'apps')
+     * @param entityId Entity identifier
+     */
+    async clearAllFaults(entityType: 'components' | 'apps', entityId: string): Promise<void> {
+        const response = await fetchWithTimeout(this.getUrl(`${entityType}/${entityId}/faults`), {
+            method: 'DELETE',
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            const errorData = (await response.json().catch(() => ({}))) as SovdError;
+            throw new Error(errorData.message || `HTTP ${response.status}`);
+        }
+    }
+
+    /**
+     * Get fault snapshots
+     * @param faultCode Fault code
+     */
+    async getFaultSnapshots(faultCode: string): Promise<ListSnapshotsResponse> {
+        const response = await fetchWithTimeout(this.getUrl(`faults/${encodeURIComponent(faultCode)}/snapshots`), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                return { items: [], count: 0 };
+            }
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        return await response.json();
+    }
+
+    /**
+     * Get fault snapshots for a specific entity
+     * @param entityType Entity type ('components' or 'apps')
+     * @param entityId Entity identifier
+     * @param faultCode Fault code
+     */
+    async getEntityFaultSnapshots(
+        entityType: 'components' | 'apps',
+        entityId: string,
+        faultCode: string
+    ): Promise<ListSnapshotsResponse> {
+        const response = await fetchWithTimeout(
+            this.getUrl(`${entityType}/${entityId}/faults/${encodeURIComponent(faultCode)}/snapshots`),
+            {
+                method: 'GET',
+                headers: { Accept: 'application/json' },
+            }
+        );
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                return { items: [], count: 0 };
+            }
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        return await response.json();
+    }
+
+    /**
+     * Subscribe to real-time fault events via SSE
+     * @param onFault Callback for new fault events
+     * @param onError Callback for errors
+     * @returns Cleanup function to close the connection
+     */
+    subscribeFaultStream(onFault: (fault: Fault) => void, onError?: (error: Error) => void): () => void {
+        const eventSource = new EventSource(this.getUrl('faults/stream'));
+
+        eventSource.onmessage = (event) => {
+            try {
+                const fault = JSON.parse(event.data) as Fault;
+                onFault(fault);
+            } catch {
+                onError?.(new Error('Failed to parse fault event'));
+            }
+        };
+
+        eventSource.onerror = () => {
+            onError?.(new Error('Fault stream connection error'));
+        };
+
+        return () => {
+            eventSource.close();
+        };
+    }
+
+    // ===========================================================================
+    // SERVER CAPABILITIES API (SOVD Discovery)
+    // ===========================================================================
+
+    /**
+     * Get server capabilities (root endpoint)
+     */
+    async getServerCapabilities(): Promise<ServerCapabilities> {
+        const response = await fetchWithTimeout(this.getUrl(''), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        return await response.json();
+    }
+
+    /**
+     * Get SOVD version information
+     */
+    async getVersionInfo(): Promise<VersionInfo> {
+        const response = await fetchWithTimeout(this.getUrl('version-info'), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
         }
 
         return await response.json();

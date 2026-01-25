@@ -9,9 +9,10 @@ import type {
     TopicNodeData,
     Parameter,
     Operation,
-    ActionGoalStatus,
-    InvokeOperationRequest,
-    OperationResponse,
+    Execution,
+    CreateExecutionRequest,
+    CreateExecutionResponse,
+    Fault,
     VirtualFolderData,
 } from './types';
 import { isVirtualFolderData } from './types';
@@ -47,9 +48,14 @@ export interface AppState {
     operations: Map<string, Operation[]>; // componentId -> operations
     isLoadingOperations: boolean;
 
-    // Active action goals (for monitoring async actions)
-    activeGoals: Map<string, ActionGoalStatus>; // goalId -> status
-    autoRefreshGoals: boolean; // checkbox state for auto-refresh
+    // Active executions (for monitoring async actions) - SOVD Execution Model
+    activeExecutions: Map<string, Execution>; // executionId -> execution
+    autoRefreshExecutions: boolean; // checkbox state for auto-refresh
+
+    // Faults state (diagnostic trouble codes)
+    faults: Fault[];
+    isLoadingFaults: boolean;
+    faultStreamCleanup: (() => void) | null;
 
     // Actions
     connect: (url: string, baseEndpoint?: string) => Promise<boolean>;
@@ -67,15 +73,39 @@ export interface AppState {
     resetParameter: (componentId: string, paramName: string) => Promise<boolean>;
     resetAllConfigurations: (componentId: string) => Promise<{ reset_count: number; failed_count: number }>;
 
-    // Operations actions
+    // Operations actions - updated for SOVD Execution model
     fetchOperations: (componentId: string) => Promise<void>;
+    createExecution: (
+        componentId: string,
+        operationName: string,
+        request: CreateExecutionRequest
+    ) => Promise<CreateExecutionResponse | null>;
+    refreshExecutionStatus: (componentId: string, operationName: string, executionId: string) => Promise<void>;
+    cancelExecution: (componentId: string, operationName: string, executionId: string) => Promise<boolean>;
+    setAutoRefreshExecutions: (enabled: boolean) => void;
+
+    // Faults actions
+    fetchFaults: () => Promise<void>;
+    clearFault: (entityType: 'components' | 'apps', entityId: string, faultCode: string) => Promise<boolean>;
+    subscribeFaultStream: () => void;
+    unsubscribeFaultStream: () => void;
+
+    // Legacy compatibility aliases (delegate to new execution methods)
+    /** @deprecated Use activeExecutions instead */
+    activeGoals: Map<string, Execution>;
+    /** @deprecated Use autoRefreshExecutions instead */
+    autoRefreshGoals: boolean;
+    /** @deprecated Use createExecution instead */
     invokeOperation: (
         componentId: string,
         operationName: string,
-        request: InvokeOperationRequest
-    ) => Promise<OperationResponse | null>;
+        request: { type?: string; request?: unknown; goal?: unknown }
+    ) => Promise<CreateExecutionResponse | null>;
+    /** @deprecated Use refreshExecutionStatus instead */
     refreshActionStatus: (componentId: string, operationName: string, goalId: string) => Promise<void>;
+    /** @deprecated Use cancelExecution instead */
     cancelActionGoal: (componentId: string, operationName: string, goalId: string) => Promise<boolean>;
+    /** @deprecated Use setAutoRefreshExecutions instead */
     setAutoRefreshGoals: (enabled: boolean) => void;
 }
 
@@ -202,9 +232,22 @@ export const useAppStore = create<AppState>()(
             operations: new Map(),
             isLoadingOperations: false,
 
-            // Active goals state
-            activeGoals: new Map(),
-            autoRefreshGoals: false,
+            // Active executions state - SOVD Execution model
+            activeExecutions: new Map(),
+            autoRefreshExecutions: false,
+
+            // Faults state
+            faults: [],
+            isLoadingFaults: false,
+            faultStreamCleanup: null,
+
+            // Legacy compatibility aliases (computed from new state)
+            get activeGoals() {
+                return get().activeExecutions;
+            },
+            get autoRefreshGoals() {
+                return get().autoRefreshExecutions;
+            },
 
             // Connect to SOVD server
             connect: async (url: string, baseEndpoint: string = '') => {
@@ -786,7 +829,7 @@ export const useAppStore = create<AppState>()(
             },
 
             // ===========================================================================
-            // OPERATIONS ACTIONS (ROS 2 Services & Actions)
+            // OPERATIONS ACTIONS (ROS 2 Services & Actions) - SOVD Execution Model
             // ===========================================================================
 
             fetchOperations: async (componentId: string) => {
@@ -807,27 +850,28 @@ export const useAppStore = create<AppState>()(
                 }
             },
 
-            invokeOperation: async (componentId: string, operationName: string, request: InvokeOperationRequest) => {
-                const { client, activeGoals } = get();
+            createExecution: async (componentId: string, operationName: string, request: CreateExecutionRequest) => {
+                const { client, activeExecutions } = get();
                 if (!client) return null;
 
                 try {
-                    const result = await client.invokeOperation(componentId, operationName, request);
+                    const result = await client.createExecution(componentId, operationName, request);
 
-                    if (result.kind === 'action' && result.status === 'success') {
-                        // Track the new action goal
-                        // goal_status can be 'accepted', 'executing', etc. - use it directly
-                        const newGoals = new Map(activeGoals);
-                        newGoals.set(result.goal_id, {
-                            goal_id: result.goal_id,
-                            status: result.goal_status as ActionGoalStatus['status'],
-                            action_path: `/${componentId}/${operationName}`,
-                            action_type: request.type || 'unknown',
+                    if (result.kind === 'action' && !result.error) {
+                        // Track the new execution for actions
+                        const newExecutions = new Map(activeExecutions);
+                        newExecutions.set(result.id, {
+                            id: result.id,
+                            status: result.status,
+                            created_at: new Date().toISOString(),
+                            result: result.result,
                         });
-                        set({ activeGoals: newGoals });
-                        toast.success(`Action goal ${result.goal_id.slice(0, 8)}... accepted`);
-                    } else if (result.kind === 'service') {
-                        toast.success(`Service ${operationName} called successfully`);
+                        set({ activeExecutions: newExecutions });
+                        toast.success(`Action execution ${result.id.slice(0, 8)}... started`);
+                    } else if (result.kind === 'service' && !result.error) {
+                        toast.success(`Service ${operationName} executed successfully`);
+                    } else if (result.error) {
+                        toast.error(`Operation failed: ${result.error}`);
                     }
 
                     return result;
@@ -838,65 +882,152 @@ export const useAppStore = create<AppState>()(
                 }
             },
 
-            refreshActionStatus: async (componentId: string, operationName: string, goalId: string) => {
-                const { client, activeGoals } = get();
+            refreshExecutionStatus: async (componentId: string, operationName: string, executionId: string) => {
+                const { client, activeExecutions } = get();
                 if (!client) return;
 
                 try {
-                    const status = await client.getActionStatus(componentId, operationName, goalId);
-                    const newGoals = new Map(activeGoals);
-                    newGoals.set(goalId, status);
-                    set({ activeGoals: newGoals });
-
-                    // If goal is terminal, fetch result
-                    if (['succeeded', 'canceled', 'aborted'].includes(status.status)) {
-                        try {
-                            const result = await client.getActionResult(componentId, operationName, goalId);
-                            const updatedGoals = new Map(get().activeGoals);
-                            const existing = updatedGoals.get(goalId);
-                            if (existing) {
-                                updatedGoals.set(goalId, { ...existing, last_feedback: result.result });
-                            }
-                            set({ activeGoals: updatedGoals });
-                        } catch {
-                            // Result might not be available yet
-                        }
-                    }
+                    const execution = await client.getExecution(componentId, operationName, executionId);
+                    const newExecutions = new Map(activeExecutions);
+                    newExecutions.set(executionId, execution);
+                    set({ activeExecutions: newExecutions });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
-                    toast.error(`Failed to refresh action status: ${message}`);
+                    toast.error(`Failed to refresh execution status: ${message}`);
                 }
             },
 
-            cancelActionGoal: async (componentId: string, operationName: string, goalId: string) => {
-                const { client, activeGoals } = get();
+            cancelExecution: async (componentId: string, operationName: string, executionId: string) => {
+                const { client, activeExecutions } = get();
                 if (!client) return false;
 
                 try {
-                    const result = await client.cancelAction(componentId, operationName, goalId);
-
-                    if (result.status === 'canceling') {
-                        const newGoals = new Map(activeGoals);
-                        const existing = newGoals.get(goalId);
-                        if (existing) {
-                            newGoals.set(goalId, { ...existing, status: 'canceling' });
-                        }
-                        set({ activeGoals: newGoals });
-                        toast.success(`Cancel request sent for goal ${goalId.slice(0, 8)}...`);
-                        return true;
-                    } else {
-                        toast.error(`Failed to cancel: ${result.message}`);
-                        return false;
-                    }
+                    const execution = await client.cancelExecution(componentId, operationName, executionId);
+                    const newExecutions = new Map(activeExecutions);
+                    newExecutions.set(executionId, execution);
+                    set({ activeExecutions: newExecutions });
+                    toast.success(`Cancel request sent for execution ${executionId.slice(0, 8)}...`);
+                    return true;
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
-                    toast.error(`Failed to cancel action: ${message}`);
+                    toast.error(`Failed to cancel execution: ${message}`);
                     return false;
                 }
             },
 
+            setAutoRefreshExecutions: (enabled: boolean) => {
+                set({ autoRefreshExecutions: enabled });
+            },
+
+            // ===========================================================================
+            // FAULTS ACTIONS (Diagnostic Trouble Codes)
+            // ===========================================================================
+
+            fetchFaults: async () => {
+                const { client } = get();
+                if (!client) return;
+
+                set({ isLoadingFaults: true });
+
+                try {
+                    const result = await client.listAllFaults();
+                    set({ faults: result.items, isLoadingFaults: false });
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : 'Unknown error';
+                    toast.error(`Failed to load faults: ${message}`);
+                    set({ isLoadingFaults: false });
+                }
+            },
+
+            clearFault: async (entityType: 'components' | 'apps', entityId: string, faultCode: string) => {
+                const { client, fetchFaults } = get();
+                if (!client) return false;
+
+                try {
+                    await client.clearFault(entityType, entityId, faultCode);
+                    toast.success(`Fault ${faultCode} cleared`);
+                    // Refresh faults list
+                    await fetchFaults();
+                    return true;
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : 'Unknown error';
+                    toast.error(`Failed to clear fault: ${message}`);
+                    return false;
+                }
+            },
+
+            subscribeFaultStream: () => {
+                const { client, faultStreamCleanup } = get();
+                if (!client) return;
+
+                // Clean up existing subscription
+                if (faultStreamCleanup) {
+                    faultStreamCleanup();
+                }
+
+                const cleanup = client.subscribeFaultStream(
+                    (fault) => {
+                        const { faults } = get();
+                        // Add or update fault in the list
+                        const existingIndex = faults.findIndex(
+                            (f) => f.code === fault.code && f.entity_id === fault.entity_id
+                        );
+                        if (existingIndex >= 0) {
+                            const newFaults = [...faults];
+                            newFaults[existingIndex] = fault;
+                            set({ faults: newFaults });
+                        } else {
+                            set({ faults: [...faults, fault] });
+                        }
+                        toast.warning(`Fault: ${fault.message}`, { autoClose: 5000 });
+                    },
+                    (error) => {
+                        toast.error(`Fault stream error: ${error.message}`);
+                    }
+                );
+
+                set({ faultStreamCleanup: cleanup });
+            },
+
+            unsubscribeFaultStream: () => {
+                const { faultStreamCleanup } = get();
+                if (faultStreamCleanup) {
+                    faultStreamCleanup();
+                    set({ faultStreamCleanup: null });
+                }
+            },
+
+            // ===========================================================================
+            // LEGACY COMPATIBILITY (delegate to new execution methods)
+            // ===========================================================================
+
+            invokeOperation: async (
+                componentId: string,
+                operationName: string,
+                request: { type?: string; request?: unknown; goal?: unknown }
+            ) => {
+                const { createExecution } = get();
+                // Map legacy request format to new CreateExecutionRequest
+                const execRequest: CreateExecutionRequest = {
+                    type: request.type,
+                    input: request.request ?? request.goal,
+                };
+                return createExecution(componentId, operationName, execRequest);
+            },
+
+            refreshActionStatus: async (componentId: string, operationName: string, goalId: string) => {
+                const { refreshExecutionStatus } = get();
+                return refreshExecutionStatus(componentId, operationName, goalId);
+            },
+
+            cancelActionGoal: async (componentId: string, operationName: string, goalId: string) => {
+                const { cancelExecution } = get();
+                return cancelExecution(componentId, operationName, goalId);
+            },
+
             setAutoRefreshGoals: (enabled: boolean) => {
-                set({ autoRefreshGoals: enabled });
+                const { setAutoRefreshExecutions } = get();
+                return setAutoRefreshExecutions(enabled);
             },
         }),
         {
