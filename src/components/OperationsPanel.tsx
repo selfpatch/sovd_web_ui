@@ -23,7 +23,7 @@ import { useAppStore, type AppState } from '@/lib/store';
 import type {
     Operation,
     OperationKind,
-    OperationResponse,
+    CreateExecutionResponse,
     TopicSchema,
     ServiceSchema,
     ActionSchema,
@@ -37,7 +37,7 @@ import { OperationResponseDisplay } from './OperationResponse';
 interface OperationHistoryEntry {
     id: string;
     timestamp: Date;
-    response: OperationResponse;
+    response: CreateExecutionResponse;
     executionId?: string;
 }
 
@@ -110,7 +110,7 @@ function OperationRow({
 }: {
     operation: Operation;
     componentId: string;
-    onInvoke: (opName: string, payload: unknown) => Promise<OperationResponse | null>;
+    onInvoke: (opName: string, payload: unknown) => Promise<CreateExecutionResponse | null>;
     defaultExpanded?: boolean;
 }) {
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
@@ -190,8 +190,7 @@ function OperationRow({
                     id: crypto.randomUUID(),
                     timestamp: new Date(),
                     response,
-                    executionId:
-                        response.kind === 'action' && response.status === 'success' ? response.execution_id : undefined,
+                    executionId: response.kind === 'action' && !response.error ? response.id : undefined,
                 };
                 setHistory((prev) => [entry, ...prev.slice(0, 9)]);
             }
