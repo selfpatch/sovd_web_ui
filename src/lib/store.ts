@@ -89,24 +89,6 @@ export interface AppState {
     clearFault: (entityType: 'components' | 'apps', entityId: string, faultCode: string) => Promise<boolean>;
     subscribeFaultStream: () => void;
     unsubscribeFaultStream: () => void;
-
-    // Legacy compatibility aliases (delegate to new execution methods)
-    /** @deprecated Use activeExecutions instead */
-    activeGoals: Map<string, Execution>;
-    /** @deprecated Use autoRefreshExecutions instead */
-    autoRefreshGoals: boolean;
-    /** @deprecated Use createExecution instead */
-    invokeOperation: (
-        componentId: string,
-        operationName: string,
-        request: { type?: string; request?: unknown; goal?: unknown }
-    ) => Promise<CreateExecutionResponse | null>;
-    /** @deprecated Use refreshExecutionStatus instead */
-    refreshActionStatus: (componentId: string, operationName: string, goalId: string) => Promise<void>;
-    /** @deprecated Use cancelExecution instead */
-    cancelActionGoal: (componentId: string, operationName: string, goalId: string) => Promise<boolean>;
-    /** @deprecated Use setAutoRefreshExecutions instead */
-    setAutoRefreshGoals: (enabled: boolean) => void;
 }
 
 /**
@@ -240,14 +222,6 @@ export const useAppStore = create<AppState>()(
             faults: [],
             isLoadingFaults: false,
             faultStreamCleanup: null,
-
-            // Legacy compatibility aliases (computed from new state)
-            get activeGoals() {
-                return get().activeExecutions;
-            },
-            get autoRefreshGoals() {
-                return get().autoRefreshExecutions;
-            },
 
             // Connect to SOVD server
             connect: async (url: string, baseEndpoint: string = '') => {
@@ -995,39 +969,6 @@ export const useAppStore = create<AppState>()(
                     faultStreamCleanup();
                     set({ faultStreamCleanup: null });
                 }
-            },
-
-            // ===========================================================================
-            // LEGACY COMPATIBILITY (delegate to new execution methods)
-            // ===========================================================================
-
-            invokeOperation: async (
-                componentId: string,
-                operationName: string,
-                request: { type?: string; request?: unknown; goal?: unknown }
-            ) => {
-                const { createExecution } = get();
-                // Map legacy request format to new CreateExecutionRequest
-                const execRequest: CreateExecutionRequest = {
-                    type: request.type,
-                    input: request.request ?? request.goal,
-                };
-                return createExecution(componentId, operationName, execRequest);
-            },
-
-            refreshActionStatus: async (componentId: string, operationName: string, goalId: string) => {
-                const { refreshExecutionStatus } = get();
-                return refreshExecutionStatus(componentId, operationName, goalId);
-            },
-
-            cancelActionGoal: async (componentId: string, operationName: string, goalId: string) => {
-                const { cancelExecution } = get();
-                return cancelExecution(componentId, operationName, goalId);
-            },
-
-            setAutoRefreshGoals: (enabled: boolean) => {
-                const { setAutoRefreshExecutions } = get();
-                return setAutoRefreshExecutions(enabled);
             },
         }),
         {

@@ -377,15 +377,17 @@ export interface ServiceOperationResponse {
 }
 
 /**
- * Response from POST /components/{id}/operations/{op} for actions
+ * Response from POST /{entity}/operations/{op}/executions for actions
  */
 export interface ActionOperationResponse {
     status: 'success' | 'error';
     kind: 'action';
     component_id: string;
     operation: string;
-    goal_id: string;
-    goal_status: 'accepted' | 'rejected';
+    /** Execution ID for action tracking */
+    execution_id: string;
+    /** Initial execution status */
+    execution_status: ExecutionStatus;
     error?: string;
 }
 
@@ -393,49 +395,6 @@ export interface ActionOperationResponse {
  * Union type for operation response
  */
 export type OperationResponse = ServiceOperationResponse | ActionOperationResponse;
-
-/**
- * Action goal status values
- */
-export type ActionGoalStatusValue = 'accepted' | 'executing' | 'canceling' | 'succeeded' | 'canceled' | 'aborted';
-
-/**
- * Response from GET /components/{id}/operations/{op}/status
- */
-export interface ActionGoalStatus {
-    goal_id: string;
-    status: ActionGoalStatusValue;
-    action_path: string;
-    action_type: string;
-    last_feedback?: unknown;
-}
-
-/**
- * Response from GET /components/{id}/operations/{op}/status?all=true
- */
-export interface AllActionGoalsStatus {
-    action_path: string;
-    goals: ActionGoalStatus[];
-    count: number;
-}
-
-/**
- * Response from GET /components/{id}/operations/{op}/result
- */
-export interface ActionGoalResult {
-    goal_id: string;
-    status: ActionGoalStatusValue;
-    result: unknown;
-}
-
-/**
- * Response from DELETE /components/{id}/operations/{op}
- */
-export interface ActionCancelResponse {
-    status: 'canceling' | 'error';
-    goal_id: string;
-    message: string;
-}
 
 // =============================================================================
 // COMPONENT EXTENDED (with operations list from discovery)

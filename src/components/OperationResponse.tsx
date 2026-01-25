@@ -104,21 +104,23 @@ export function OperationResponseDisplay({ response }: OperationResponseProps) {
 
             {/* Body */}
             <div className="p-3 space-y-2 text-sm">
-                {/* Action-specific: Goal ID */}
-                {isAction && 'goal_id' in response && response.goal_id && (
+                {/* Action-specific: Execution ID */}
+                {isAction && 'execution_id' in response && response.execution_id && (
                     <div className="flex items-center gap-2">
                         <Hash className="w-3.5 h-3.5 text-muted-foreground" />
-                        <span className="text-muted-foreground text-xs">Goal ID:</span>
-                        <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono">{response.goal_id}</code>
+                        <span className="text-muted-foreground text-xs">Execution ID:</span>
+                        <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono">
+                            {response.execution_id}
+                        </code>
                     </div>
                 )}
 
                 {/* Action-specific: Initial status */}
-                {isAction && 'goal_status' in response && response.goal_status && (
+                {isAction && 'execution_status' in response && response.execution_status && (
                     <div className="flex items-center gap-2">
                         <Clock className="w-3.5 h-3.5 text-muted-foreground" />
                         <span className="text-muted-foreground text-xs">Initial Status:</span>
-                        <Badge variant="secondary">{response.goal_status}</Badge>
+                        <Badge variant="secondary">{response.execution_status}</Badge>
                     </div>
                 )}
 
