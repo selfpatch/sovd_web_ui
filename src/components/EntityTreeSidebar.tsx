@@ -129,7 +129,7 @@ export function EntityTreeSidebar({ onSettingsClick }: EntityTreeSidebarProps) {
                         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                         <Input
                             type="text"
-                            placeholder="Search entities..."
+                            placeholder="Search entities... (⌘K)"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="pl-8 pr-8 h-8 text-sm"
