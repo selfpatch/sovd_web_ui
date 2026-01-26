@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useShallow } from 'zustand/shallow';
 import {
     Copy,
-    Loader2,
     Radio,
     ChevronRight,
     ArrowUp,
@@ -21,6 +20,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/EmptyState';
+import { EntityDetailSkeleton } from '@/components/EntityDetailSkeleton';
 import { TopicDiagnosticsPanel } from '@/components/TopicDiagnosticsPanel';
 import { ConfigurationPanel } from '@/components/ConfigurationPanel';
 import { OperationsPanel } from '@/components/OperationsPanel';
@@ -379,8 +379,10 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
     // Loading
     if (isLoadingDetails) {
         return (
-            <main className="flex-1 flex items-center justify-center bg-background">
-                <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            <main className="flex-1 overflow-y-auto p-6 bg-background">
+                <div className="max-w-4xl mx-auto">
+                    <EntityDetailSkeleton />
+                </div>
             </main>
         );
     }
@@ -607,8 +609,8 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
                             hasTopicsInfo={hasTopicsInfo ?? false}
                             selectEntity={selectEntity}
                         />
-                    ) : isArea || isApp || isFunction ? // Already handled above with specialized panels
-                    null : selectedEntity.type === 'service' || selectedEntity.type === 'action' ? (
+                    ) : isArea || isApp || isFunction ? null : selectedEntity.type === 'service' || // Already handled above with specialized panels
+                      selectedEntity.type === 'action' ? (
                         // Service/Action detail view
                         <OperationDetailCard entity={selectedEntity} componentId={componentId} />
                     ) : selectedEntity.type === 'parameter' ? (
