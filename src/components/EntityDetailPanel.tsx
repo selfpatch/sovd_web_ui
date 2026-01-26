@@ -29,6 +29,7 @@ import { FaultsPanel } from '@/components/FaultsPanel';
 import { AreasPanel } from '@/components/AreasPanel';
 import { AppsPanel } from '@/components/AppsPanel';
 import { FunctionsPanel } from '@/components/FunctionsPanel';
+import { ServerInfoPanel } from '@/components/ServerInfoPanel';
 import { useAppStore, type AppState } from '@/lib/store';
 import type { ComponentTopic, Parameter } from '@/lib/types';
 
@@ -367,11 +368,13 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
         );
     }
 
-    // No selection
+    // No selection - show server info
     if (!selectedPath) {
         return (
-            <main className="flex-1 flex items-center justify-center bg-background">
-                <EmptyState type="no-selection" />
+            <main className="flex-1 overflow-y-auto p-6 bg-background">
+                <div className="max-w-4xl mx-auto">
+                    <ServerInfoPanel />
+                </div>
             </main>
         );
     }
@@ -651,10 +654,12 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
         );
     }
 
-    // Fallback - no data loaded yet
+    // Fallback - show server info while loading
     return (
-        <main className="flex-1 flex items-center justify-center bg-background">
-            <EmptyState type="no-selection" />
+        <main className="flex-1 overflow-y-auto p-6 bg-background">
+            <div className="max-w-4xl mx-auto">
+                <ServerInfoPanel />
+            </div>
         </main>
     );
 }
