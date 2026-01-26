@@ -427,7 +427,7 @@ function OperationRow({
     );
 }
 
-export function OperationsPanel({ componentId, highlightOperation }: OperationsPanelProps) {
+export function OperationsPanel({ componentId, highlightOperation, entityType = 'components' }: OperationsPanelProps) {
     const { operations, isLoadingOperations, fetchOperations, createExecution } = useAppStore(
         useShallow((state: AppState) => ({
             operations: state.operations,
@@ -444,19 +444,19 @@ export function OperationsPanel({ componentId, highlightOperation }: OperationsP
     // Fetch operations on mount (lazy loading)
     useEffect(() => {
         if (!operations.has(componentId)) {
-            fetchOperations(componentId);
+            fetchOperations(componentId, entityType);
         }
-    }, [componentId, operations, fetchOperations]);
+    }, [componentId, operations, fetchOperations, entityType]);
 
     const handleRefresh = useCallback(() => {
-        fetchOperations(componentId);
-    }, [componentId, fetchOperations]);
+        fetchOperations(componentId, entityType);
+    }, [componentId, fetchOperations, entityType]);
 
     const handleInvoke = useCallback(
         async (opName: string, payload: unknown) => {
-            return createExecution(componentId, opName, payload as Parameters<typeof createExecution>[2]);
+            return createExecution(componentId, opName, payload as Parameters<typeof createExecution>[2], entityType);
         },
-        [componentId, createExecution]
+        [componentId, createExecution, entityType]
     );
 
     if (isLoadingOperations && componentOperations.length === 0) {

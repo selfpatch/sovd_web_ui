@@ -162,12 +162,9 @@ export function FaultsPanel({ componentId, entityType = 'components' }: FaultsPa
         setError(null);
 
         try {
-            console.debug(`[FaultsPanel] Loading faults for ${entityType}/${componentId}`);
             const response = await client.listEntityFaults(entityType, componentId);
-            console.debug('[FaultsPanel] Faults response:', response);
             setFaults(response.items || []);
         } catch (err) {
-            console.error('[FaultsPanel] Error loading faults:', err);
             setError(err instanceof Error ? err.message : 'Failed to load faults');
             setFaults([]);
         } finally {
@@ -189,8 +186,8 @@ export function FaultsPanel({ componentId, entityType = 'components' }: FaultsPa
                 await client.clearFault(entityType, componentId, code);
                 // Reload faults after clearing
                 await loadFaults();
-            } catch (err) {
-                console.error('[FaultsPanel] Error clearing fault:', err);
+            } catch {
+                // Error is handled by toast in the store
             } finally {
                 setClearingCodes((prev) => {
                     const next = new Set(prev);

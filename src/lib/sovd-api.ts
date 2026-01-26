@@ -11,6 +11,7 @@ import type {
     ResetConfigurationResponse,
     ResetAllConfigurationsResponse,
     Operation,
+    DataItemResponse,
     // New SOVD-compliant types
     Execution,
     CreateExecutionRequest,
@@ -18,7 +19,7 @@ import type {
     ListExecutionsResponse,
     App,
     AppCapabilities,
-    Function,
+    SovdFunction,
     FunctionCapabilities,
     Fault,
     FaultSeverity,
@@ -294,17 +295,6 @@ export class SovdApiClient {
                 }
 
                 // API returns {data, id, x-medkit: {ros2: {type, topic, direction}, ...}}
-                interface DataItemResponse {
-                    data: unknown;
-                    id: string;
-                    'x-medkit'?: {
-                        ros2?: { type?: string; topic?: string; direction?: string };
-                        timestamp?: number;
-                        status?: string;
-                        publisher_count?: number;
-                        subscriber_count?: number;
-                    };
-                }
                 const item = (await response.json()) as DataItemResponse;
                 const xMedkit = item['x-medkit'];
                 const ros2 = xMedkit?.ros2;
@@ -349,17 +339,6 @@ export class SovdApiClient {
             }
 
             // API returns {data, id, x-medkit: {ros2: {type, topic, direction}, ...}}
-            interface DataItemResponse {
-                data: unknown;
-                id: string;
-                'x-medkit'?: {
-                    ros2?: { type?: string; topic?: string; direction?: string };
-                    timestamp?: number;
-                    status?: string;
-                    publisher_count?: number;
-                    subscriber_count?: number;
-                };
-            }
             const item = (await response.json()) as DataItemResponse;
             const xMedkit = item['x-medkit'];
             const ros2 = xMedkit?.ros2;
@@ -410,17 +389,6 @@ export class SovdApiClient {
             }
 
             // API returns {data, id, x-medkit: {ros2: {type, topic, direction}, ...}}
-            interface DataItemResponse {
-                data: unknown;
-                id: string;
-                'x-medkit'?: {
-                    ros2?: { type?: string; topic?: string; direction?: string };
-                    timestamp?: number;
-                    status?: string;
-                    publisher_count?: number;
-                    subscriber_count?: number;
-                };
-            }
             const item = (await response.json()) as DataItemResponse;
             const xMedkit = item['x-medkit'];
             const ros2 = xMedkit?.ros2;
@@ -563,11 +531,15 @@ export class SovdApiClient {
     // ===========================================================================
 
     /**
-     * List all configurations (parameters) for a component
-     * @param componentId Component ID
+     * List all configurations (parameters) for an entity
+     * @param entityId Entity ID (component or app)
+     * @param entityType Entity type ('components' or 'apps')
      */
-    async listConfigurations(componentId: string): Promise<ComponentConfigurations> {
-        const response = await fetchWithTimeout(this.getUrl(`components/${componentId}/configurations`), {
+    async listConfigurations(
+        entityId: string,
+        entityType: 'components' | 'apps' = 'components'
+    ): Promise<ComponentConfigurations> {
+        const response = await fetchWithTimeout(this.getUrl(`${entityType}/${entityId}/configurations`), {
             method: 'GET',
             headers: { Accept: 'application/json' },
         });
@@ -585,20 +557,25 @@ export class SovdApiClient {
         // Transform to ComponentConfigurations format
         const xMedkit = data['x-medkit'] || {};
         return {
-            component_id: xMedkit.entity_id || componentId,
-            node_name: xMedkit.ros2?.node || componentId,
+            component_id: xMedkit.entity_id || entityId,
+            node_name: xMedkit.ros2?.node || entityId,
             parameters: xMedkit.parameters || [],
         };
     }
 
     /**
      * Get a specific configuration (parameter) value and metadata
-     * @param componentId Component ID
+     * @param entityId Entity ID (component or app)
      * @param paramName Parameter name
+     * @param entityType Entity type ('components' or 'apps')
      */
-    async getConfiguration(componentId: string, paramName: string): Promise<ConfigurationDetail> {
+    async getConfiguration(
+        entityId: string,
+        paramName: string,
+        entityType: 'components' | 'apps' = 'components'
+    ): Promise<ConfigurationDetail> {
         const response = await fetchWithTimeout(
-            this.getUrl(`components/${componentId}/configurations/${encodeURIComponent(paramName)}`),
+            this.getUrl(`${entityType}/${entityId}/configurations/${encodeURIComponent(paramName)}`),
             {
                 method: 'GET',
                 headers: { Accept: 'application/json' },
@@ -618,17 +595,19 @@ export class SovdApiClient {
 
     /**
      * Set a configuration (parameter) value
-     * @param componentId Component ID
+     * @param entityId Entity ID (component or app)
      * @param paramName Parameter name
      * @param request Request with new value
+     * @param entityType Entity type ('components' or 'apps')
      */
     async setConfiguration(
-        componentId: string,
+        entityId: string,
         paramName: string,
-        request: SetConfigurationRequest
+        request: SetConfigurationRequest,
+        entityType: 'components' | 'apps' = 'components'
     ): Promise<SetConfigurationResponse> {
         const response = await fetchWithTimeout(
-            this.getUrl(`components/${componentId}/configurations/${encodeURIComponent(paramName)}`),
+            this.getUrl(`${entityType}/${entityId}/configurations/${encodeURIComponent(paramName)}`),
             {
                 method: 'PUT',
                 headers: {
@@ -652,12 +631,17 @@ export class SovdApiClient {
 
     /**
      * Reset a configuration (parameter) to its default value
-     * @param componentId Component ID
+     * @param entityId Entity ID (component or app)
      * @param paramName Parameter name
+     * @param entityType Entity type ('components' or 'apps')
      */
-    async resetConfiguration(componentId: string, paramName: string): Promise<ResetConfigurationResponse> {
+    async resetConfiguration(
+        entityId: string,
+        paramName: string,
+        entityType: 'components' | 'apps' = 'components'
+    ): Promise<ResetConfigurationResponse> {
         const response = await fetchWithTimeout(
-            this.getUrl(`components/${componentId}/configurations/${encodeURIComponent(paramName)}`),
+            this.getUrl(`${entityType}/${entityId}/configurations/${encodeURIComponent(paramName)}`),
             {
                 method: 'DELETE',
                 headers: {
@@ -678,11 +662,15 @@ export class SovdApiClient {
     }
 
     /**
-     * Reset all configurations for a component to their default values
-     * @param componentId Component ID
+     * Reset all configurations for an entity to their default values
+     * @param entityId Entity ID (component or app)
+     * @param entityType Entity type ('components' or 'apps')
      */
-    async resetAllConfigurations(componentId: string): Promise<ResetAllConfigurationsResponse> {
-        const response = await fetchWithTimeout(this.getUrl(`components/${componentId}/configurations`), {
+    async resetAllConfigurations(
+        entityId: string,
+        entityType: 'components' | 'apps' = 'components'
+    ): Promise<ResetAllConfigurationsResponse> {
+        const response = await fetchWithTimeout(this.getUrl(`${entityType}/${entityId}/configurations`), {
             method: 'DELETE',
             headers: {
                 Accept: 'application/json',
@@ -1008,17 +996,6 @@ export class SovdApiClient {
         }
 
         // API returns {data, id, x-medkit: {ros2: {type, topic, direction}, ...}}
-        interface DataItemResponse {
-            data: unknown;
-            id: string;
-            'x-medkit'?: {
-                ros2?: { type?: string; topic?: string; direction?: string };
-                timestamp?: number;
-                status?: string;
-                publisher_count?: number;
-                subscriber_count?: number;
-            };
-        }
         const item = (await response.json()) as DataItemResponse;
         const xMedkit = item['x-medkit'];
         const ros2 = xMedkit?.ros2;
@@ -1087,7 +1064,7 @@ export class SovdApiClient {
     /**
      * List all functions
      */
-    async listFunctions(): Promise<Function[]> {
+    async listFunctions(): Promise<SovdFunction[]> {
         const response = await fetchWithTimeout(this.getUrl('functions'), {
             method: 'GET',
             headers: { Accept: 'application/json' },
@@ -1097,7 +1074,7 @@ export class SovdApiClient {
             throw new Error(`HTTP ${response.status}`);
         }
 
-        return unwrapItems<Function>(await response.json());
+        return unwrapItems<SovdFunction>(await response.json());
     }
 
     /**
@@ -1191,14 +1168,15 @@ export class SovdApiClient {
         reporting_sources?: string[];
     }): Fault {
         // Map severity number/label to FaultSeverity
+        // Order matters: check critical first, then error, then warning
         let severity: FaultSeverity = 'info';
         const label = apiFault.severity_label?.toLowerCase() || '';
-        if (label === 'error' || apiFault.severity >= 2) {
+        if (label === 'critical' || apiFault.severity >= 3) {
+            severity = 'critical';
+        } else if (label === 'error' || apiFault.severity === 2) {
             severity = 'error';
         } else if (label === 'warn' || label === 'warning' || apiFault.severity === 1) {
             severity = 'warning';
-        } else if (label === 'critical' || apiFault.severity >= 3) {
-            severity = 'critical';
         }
 
         // Map status to FaultStatus
@@ -1399,8 +1377,16 @@ export class SovdApiClient {
 
         eventSource.onmessage = (event) => {
             try {
-                const fault = JSON.parse(event.data) as Fault;
-                onFault(fault);
+                // API may return raw fault format that needs transformation
+                const rawData = JSON.parse(event.data);
+                // Check if this is the raw API format (has fault_code) or already transformed
+                if ('fault_code' in rawData) {
+                    const fault = this.transformFault(rawData);
+                    onFault(fault);
+                } else {
+                    // Already in Fault format
+                    onFault(rawData as Fault);
+                }
             } catch {
                 onError?.(new Error('Failed to parse fault event'));
             }
