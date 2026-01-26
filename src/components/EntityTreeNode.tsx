@@ -99,6 +99,8 @@ function getEntityColor(type: string, _data?: unknown, isSelected?: boolean): st
             return 'text-emerald-500';
         case 'function':
             return 'text-violet-500';
+        case 'server':
+            return 'text-primary';
         case 'topic':
             return 'text-blue-400';
         case 'service':
