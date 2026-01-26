@@ -5,6 +5,7 @@ import {
     Loader2,
     Server,
     Folder,
+    FolderOpen,
     FileJson,
     Box,
     MessageSquare,
@@ -18,6 +19,9 @@ import {
     AlertTriangle,
     Cpu,
     Users,
+    Layers,
+    GitBranch,
+    Package,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -31,10 +35,23 @@ interface EntityTreeNodeProps {
 }
 
 /**
- * Get icon for entity type
+ * Get icon for entity type with visual distinction between entities and resources
+ *
+ * Entity types (structural):
+ * - Area: Layers (namespace grouping)
+ * - Component: Box (logical grouping)
+ * - App: Cpu (ROS 2 node)
+ * - Function: GitBranch (capability grouping)
+ *
+ * Resource types (data collections):
+ * - Data: Database
+ * - Operations: Zap
+ * - Configurations: Settings
+ * - Faults: AlertTriangle
+ * - Apps folder: Users
  */
-function getEntityIcon(type: string, data?: unknown) {
-    // Check for virtual folder types
+function getEntityIcon(type: string, data?: unknown, isExpanded?: boolean) {
+    // Check for virtual folder types (resource collections)
     if (isVirtualFolderData(data)) {
         const folderData = data as VirtualFolderData;
         switch (folderData.folderType) {
@@ -52,15 +69,23 @@ function getEntityIcon(type: string, data?: unknown) {
     }
 
     switch (type.toLowerCase()) {
-        case 'device':
-        case 'server':
-            return Server;
+        // Entity types
+        case 'area':
+            return Layers;
         case 'component':
         case 'ecu':
             return Box;
+        case 'app':
+            return Cpu;
+        case 'function':
+            return GitBranch;
+        // Collection/folder types
         case 'folder':
-        case 'area':
-            return Folder;
+            return isExpanded ? FolderOpen : Folder;
+        case 'device':
+        case 'server':
+            return Server;
+        // Resource item types
         case 'topic':
             return MessageSquare;
         case 'service':
@@ -69,12 +94,58 @@ function getEntityIcon(type: string, data?: unknown) {
             return Clock;
         case 'parameter':
             return Sliders;
-        case 'app':
-            return Cpu;
         case 'fault':
             return AlertTriangle;
+        case 'package':
+            return Package;
         default:
             return FileJson;
+    }
+}
+
+/**
+ * Get color class for entity type
+ */
+function getEntityColor(type: string, data?: unknown, isSelected?: boolean): string {
+    if (isSelected) return 'text-primary';
+
+    // Check for virtual folder types (resource collections)
+    if (isVirtualFolderData(data)) {
+        const folderData = data as VirtualFolderData;
+        switch (folderData.folderType) {
+            case 'data':
+                return 'text-blue-500';
+            case 'operations':
+                return 'text-amber-500';
+            case 'configurations':
+                return 'text-purple-500';
+            case 'faults':
+                return 'text-red-500';
+            case 'apps':
+                return 'text-green-500';
+        }
+    }
+
+    switch (type.toLowerCase()) {
+        case 'area':
+            return 'text-cyan-500';
+        case 'component':
+        case 'ecu':
+            return 'text-indigo-500';
+        case 'app':
+            return 'text-emerald-500';
+        case 'function':
+            return 'text-violet-500';
+        case 'topic':
+            return 'text-blue-400';
+        case 'service':
+            return 'text-amber-400';
+        case 'action':
+            return 'text-orange-400';
+        case 'fault':
+            return 'text-red-400';
+        default:
+            return 'text-muted-foreground';
     }
 }
 
@@ -108,7 +179,8 @@ export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
     const isLoading = loadingPaths.includes(node.path);
     const isSelected = selectedPath === node.path;
     const hasChildren = node.hasChildren !== false; // Default to true if not specified
-    const Icon = getEntityIcon(node.type, node.data);
+    const Icon = getEntityIcon(node.type, node.data, isExpanded);
+    const iconColorClass = getEntityColor(node.type, node.data, isSelected);
 
     // Get topic direction info if available
     const topicData = isTopicNodeData(node.data) ? node.data : null;
@@ -163,7 +235,7 @@ export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
                     </button>
                 </CollapsibleTrigger>
 
-                <Icon className={cn('w-4 h-4 shrink-0', isSelected ? 'text-primary' : 'text-muted-foreground')} />
+                <Icon className={cn('w-4 h-4 shrink-0', iconColorClass)} />
 
                 <span className="text-sm truncate flex-1">{node.name}</span>
 
@@ -188,8 +260,13 @@ export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
                     </span>
                 )}
 
-                {/* Type label */}
-                <span className={cn('text-xs shrink-0', isSelected ? 'text-primary/70' : 'text-muted-foreground')}>
+                {/* Type label badge */}
+                <span
+                    className={cn(
+                        'text-xs shrink-0 px-1 py-0.5 rounded',
+                        isSelected ? 'text-primary/70' : 'text-muted-foreground bg-muted/50'
+                    )}
+                >
                     {node.type}
                 </span>
             </div>
