@@ -12,7 +12,7 @@ interface ConfigurationPanelProps {
     componentId: string;
     /** Optional parameter name to highlight */
     highlightParam?: string;
-    /** Entity type for API calls (unused currently, defaults to 'components') */
+    /** Entity type for API calls */
     entityType?: 'components' | 'apps';
 }
 

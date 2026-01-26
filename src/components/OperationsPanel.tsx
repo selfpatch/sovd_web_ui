@@ -45,7 +45,7 @@ interface OperationsPanelProps {
     componentId: string;
     /** Optional: highlight and auto-expand a specific operation */
     highlightOperation?: string;
-    /** Entity type for API calls (unused currently, defaults to 'components') */
+    /** Entity type for API calls */
     entityType?: 'components' | 'apps';
 }
 
