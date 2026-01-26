@@ -644,15 +644,33 @@ export interface ServerCapabilities {
 }
 
 /**
+ * Vendor info in SOVD version response
+ */
+export interface VendorInfo {
+    /** Vendor/implementation name */
+    name: string;
+    /** Vendor/implementation version */
+    version: string;
+}
+
+/**
+ * Single SOVD info entry from version-info response
+ */
+export interface SovdInfoEntry {
+    /** Base URI for the API */
+    base_uri: string;
+    /** SOVD specification version */
+    version: string;
+    /** Vendor-specific information */
+    vendor_info?: VendorInfo;
+}
+
+/**
  * Version info from GET /version-info
  */
 export interface VersionInfo {
-    /** SOVD specification version */
-    sovd_version: string;
-    /** Server implementation version */
-    implementation_version?: string;
-    /** Additional version details */
-    details?: Record<string, unknown>;
+    /** Array of SOVD version info entries */
+    sovd_info: SovdInfoEntry[];
 }
 
 // =============================================================================

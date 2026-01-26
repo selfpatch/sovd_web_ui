@@ -15,6 +15,7 @@ import type {
     Fault,
     VirtualFolderData,
     App,
+    VersionInfo,
 } from './types';
 import { isVirtualFolderData } from './types';
 import { createSovdClient, type SovdApiClient } from './sovd-api';
@@ -273,15 +274,44 @@ export const useAppStore = create<AppState>()(
                 });
             },
 
-            // Load root entities
+            // Load root entities - creates a server node as root with areas as children
             loadRootEntities: async () => {
-                const { client } = get();
+                const { client, serverUrl } = get();
                 if (!client) return;
 
                 try {
-                    const entities = await client.getEntities();
-                    const treeNodes = entities.map((e: SovdEntity) => toTreeNode(e));
-                    set({ rootEntities: treeNodes });
+                    // Fetch version info and areas in parallel
+                    const [versionInfo, entities] = await Promise.all([
+                        client.getVersionInfo().catch(() => null),
+                        client.getEntities(),
+                    ]);
+
+                    // Extract server info from version-info response
+                    const sovdInfo = versionInfo?.sovd_info?.[0];
+                    const serverName = sovdInfo?.vendor_info?.name || 'SOVD Server';
+                    const serverVersion = sovdInfo?.vendor_info?.version || '';
+                    const sovdVersion = sovdInfo?.version || '';
+
+                    // Create server root node with areas as children
+                    const serverNode: EntityTreeNode = {
+                        id: 'server',
+                        name: serverName,
+                        type: 'server',
+                        href: serverUrl || '',
+                        path: '/server',
+                        hasChildren: true,
+                        isLoading: false,
+                        isExpanded: false,
+                        children: entities.map((e: SovdEntity) => toTreeNode(e, '/server')),
+                        data: {
+                            versionInfo,
+                            serverVersion,
+                            sovdVersion,
+                            serverUrl,
+                        },
+                    };
+
+                    set({ rootEntities: [serverNode], expandedPaths: ['/server'] });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
                     toast.error(`Failed to load entities: ${message}`);
@@ -350,8 +380,8 @@ export const useAppStore = create<AppState>()(
                                     };
                                 });
                             } else {
-                                // For areas and components - use entity path without /resources/data
-                                const entityPath = path.replace('/resources/data', '');
+                                // For areas and components - use entity path without /resources/data and /server prefix
+                                const entityPath = path.replace('/resources/data', '').replace(/^\/server/, '');
                                 const topics = await client.getEntities(entityPath);
                                 children = topics.map((topic: SovdEntity & { data?: ComponentTopic }) => {
                                     const cleanName = topic.name.startsWith('/') ? topic.name.slice(1) : topic.name;
@@ -453,9 +483,15 @@ export const useAppStore = create<AppState>()(
                     return;
                 }
 
-                // Regular node loading for entities (areas, subareas, components, subcomponents)
-                // These load their direct children: areas load subareas+components, components load subcomponents+apps
+                // Regular node loading for entities (server, areas, subareas, components, subcomponents)
+                // These load their direct children
                 const nodeType = node?.type?.toLowerCase() || '';
+
+                // Handle server node - children (areas) are already loaded in loadRootEntities
+                if (nodeType === 'server') {
+                    // Server children (areas) are pre-loaded, nothing to do
+                    return;
+                }
 
                 // Check if this is a loadable entity type
                 const isAreaOrSubarea = nodeType === 'area' || nodeType === 'subarea';
@@ -473,11 +509,14 @@ export const useAppStore = create<AppState>()(
                     try {
                         let loadedEntities: EntityTreeNode[] = [];
 
+                        // Convert tree path to API path (remove /server prefix)
+                        const apiPath = path.replace(/^\/server/, '');
+
                         if (isAreaOrSubarea) {
                             // Load both subareas and components for this area
                             // API returns mixed: components come from getEntities, subareas from listSubareas
                             const [components, subareas] = await Promise.all([
-                                client.getEntities(path),
+                                client.getEntities(apiPath),
                                 client.listSubareas(node.id).catch(() => []),
                             ]);
 
@@ -546,7 +585,9 @@ export const useAppStore = create<AppState>()(
                 set({ loadingPaths: [...loadingPaths, path] });
 
                 try {
-                    const entities = await client.getEntities(path);
+                    // Convert tree path to API path (remove /server prefix)
+                    const apiPath = path.replace(/^\/server/, '');
+                    const entities = await client.getEntities(apiPath);
                     const children = entities.map((e: SovdEntity) => toTreeNode(e, path));
 
                     // Update tree with children
@@ -630,7 +671,9 @@ export const useAppStore = create<AppState>()(
                         });
 
                         try {
-                            const details = await client.getEntityDetails(path);
+                            // Convert tree path to API path (remove /server prefix)
+                            const apiPath = path.replace(/^\/server/, '');
+                            const details = await client.getEntityDetails(apiPath);
 
                             // Update tree node with full data MERGED with direction info
                             // This preserves isPublisher/isSubscriber for the tree icons
@@ -674,6 +717,34 @@ export const useAppStore = create<AppState>()(
                             topicData,
                             rosType: topicData.type,
                             type: 'topic',
+                        },
+                    });
+                    return;
+                }
+
+                // Handle Server node selection - show server info panel
+                if (node && node.type === 'server') {
+                    const newExpandedPaths = expandedPaths.includes(path) ? expandedPaths : [...expandedPaths, path];
+                    const serverData = node.data as {
+                        versionInfo?: VersionInfo;
+                        serverVersion?: string;
+                        sovdVersion?: string;
+                        serverUrl?: string;
+                    };
+
+                    set({
+                        selectedPath: path,
+                        expandedPaths: newExpandedPaths,
+                        isLoadingDetails: false,
+                        selectedEntity: {
+                            id: node.id,
+                            name: node.name,
+                            type: 'server',
+                            href: node.href,
+                            versionInfo: serverData?.versionInfo,
+                            serverVersion: serverData?.serverVersion,
+                            sovdVersion: serverData?.sovdVersion,
+                            serverUrl: serverData?.serverUrl,
                         },
                     });
                     return;
@@ -834,7 +905,9 @@ export const useAppStore = create<AppState>()(
                 });
 
                 try {
-                    const details = await client.getEntityDetails(path);
+                    // Convert tree path to API path (remove /server prefix)
+                    const apiPath = path.replace(/^\/server/, '');
+                    const details = await client.getEntityDetails(apiPath);
                     set({ selectedEntity: details, isLoadingDetails: false });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';

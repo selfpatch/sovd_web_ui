@@ -118,7 +118,11 @@ export function ServerInfoPanel() {
                             <Server className="w-5 h-5 text-primary" />
                         </div>
                         <div>
-                            <CardTitle className="text-lg">{capabilities?.server_name || 'SOVD Server'}</CardTitle>
+                            <CardTitle className="text-lg">
+                                {versionInfo?.sovd_info?.[0]?.vendor_info?.name ||
+                                    capabilities?.server_name ||
+                                    'SOVD Server'}
+                            </CardTitle>
                             <CardDescription className="flex items-center gap-2 flex-wrap">
                                 <Badge variant="outline" className="text-green-600 border-green-300">
                                     <CheckCircle2 className="w-3 h-3 mr-1" />
@@ -135,19 +139,25 @@ export function ServerInfoPanel() {
                         <div className="p-3 rounded-lg bg-muted/50">
                             <div className="text-sm text-muted-foreground mb-1">SOVD Version</div>
                             <p className="font-mono text-sm">
-                                {capabilities?.sovd_version || versionInfo?.sovd_version || 'Unknown'}
+                                {versionInfo?.sovd_info?.[0]?.version || capabilities?.sovd_version || 'Unknown'}
                             </p>
                         </div>
+                        {versionInfo?.sovd_info?.[0]?.vendor_info?.version && (
+                            <div className="p-3 rounded-lg bg-muted/50">
+                                <div className="text-sm text-muted-foreground mb-1">Implementation Version</div>
+                                <p className="font-mono text-sm">{versionInfo.sovd_info[0].vendor_info.version}</p>
+                            </div>
+                        )}
                         {capabilities?.server_version && (
                             <div className="p-3 rounded-lg bg-muted/50">
                                 <div className="text-sm text-muted-foreground mb-1">Server Version</div>
                                 <p className="font-mono text-sm">{capabilities.server_version}</p>
                             </div>
                         )}
-                        {versionInfo?.implementation_version && (
+                        {versionInfo?.sovd_info?.[0]?.base_uri && (
                             <div className="p-3 rounded-lg bg-muted/50">
-                                <div className="text-sm text-muted-foreground mb-1">Implementation</div>
-                                <p className="font-mono text-sm">{versionInfo.implementation_version}</p>
+                                <div className="text-sm text-muted-foreground mb-1">Base URI</div>
+                                <p className="font-mono text-sm">{versionInfo.sovd_info[0].base_uri}</p>
                             </div>
                         )}
                     </div>

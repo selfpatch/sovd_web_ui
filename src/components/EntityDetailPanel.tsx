@@ -16,6 +16,7 @@ import {
     GitBranch,
     Home,
     AlertTriangle,
+    Server,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -33,7 +34,7 @@ import { FunctionsPanel } from '@/components/FunctionsPanel';
 import { ServerInfoPanel } from '@/components/ServerInfoPanel';
 import { FaultsDashboard } from '@/components/FaultsDashboard';
 import { useAppStore, type AppState } from '@/lib/store';
-import type { ComponentTopic, Parameter } from '@/lib/types';
+import type { ComponentTopic, Parameter, VersionInfo } from '@/lib/types';
 
 type ComponentTab = 'data' | 'operations' | 'configurations' | 'faults';
 
@@ -50,6 +51,95 @@ const COMPONENT_TABS: TabConfig[] = [
     { id: 'configurations', label: 'Config', icon: Settings, description: 'Parameters' },
     { id: 'faults', label: 'Faults', icon: AlertTriangle, description: 'Diagnostic trouble codes' },
 ];
+
+/**
+ * Server Panel - displays SOVD server version information
+ */
+interface ServerPanelProps {
+    serverName: string;
+    versionInfo?: VersionInfo;
+    serverUrl?: string;
+}
+
+function ServerPanel({ serverName, versionInfo, serverUrl }: ServerPanelProps) {
+    const sovdInfo = versionInfo?.sovd_info?.[0];
+    const vendorInfo = sovdInfo?.vendor_info;
+
+    return (
+        <div className="space-y-6">
+            {/* Server Header */}
+            <Card>
+                <CardHeader>
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-primary/10">
+                            <Server className="w-5 h-5 text-primary" />
+                        </div>
+                        <div>
+                            <CardTitle className="text-lg">{serverName}</CardTitle>
+                            <CardDescription className="flex items-center gap-2 flex-wrap">
+                                <Badge variant="outline" className="text-primary border-primary/30">
+                                    server
+                                </Badge>
+                                {serverUrl && (
+                                    <>
+                                        <span className="text-muted-foreground">•</span>
+                                        <span className="font-mono text-xs truncate max-w-[200px]">{serverUrl}</span>
+                                    </>
+                                )}
+                            </CardDescription>
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {/* SOVD Version */}
+                        <div className="p-3 rounded-lg bg-muted/50">
+                            <div className="text-sm text-muted-foreground mb-1">SOVD Version</div>
+                            <p className="font-mono text-sm font-medium">{sovdInfo?.version || 'Unknown'}</p>
+                        </div>
+
+                        {/* Vendor Name */}
+                        {vendorInfo?.name && (
+                            <div className="p-3 rounded-lg bg-muted/50">
+                                <div className="text-sm text-muted-foreground mb-1">Implementation</div>
+                                <p className="font-mono text-sm font-medium">{vendorInfo.name}</p>
+                            </div>
+                        )}
+
+                        {/* Vendor Version */}
+                        {vendorInfo?.version && (
+                            <div className="p-3 rounded-lg bg-muted/50">
+                                <div className="text-sm text-muted-foreground mb-1">Version</div>
+                                <p className="font-mono text-sm font-medium">{vendorInfo.version}</p>
+                            </div>
+                        )}
+
+                        {/* Base URI */}
+                        {sovdInfo?.base_uri && (
+                            <div className="p-3 rounded-lg bg-muted/50">
+                                <div className="text-sm text-muted-foreground mb-1">Base URI</div>
+                                <p className="font-mono text-sm">{sovdInfo.base_uri}</p>
+                            </div>
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Areas info */}
+            <Card>
+                <CardContent className="pt-6">
+                    <div className="text-center text-muted-foreground">
+                        <Layers className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm">Expand the server node in the tree to see areas.</p>
+                        <p className="text-xs mt-1">
+                            Areas contain components and apps that provide data, operations, and configurations.
+                        </p>
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
+    );
+}
 
 /**
  * Component tab content - renders based on active tab
@@ -449,6 +539,7 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
         const isArea = selectedEntity.type === 'area';
         const isApp = selectedEntity.type === 'app';
         const isFunction = selectedEntity.type === 'function';
+        const isServer = selectedEntity.type === 'server';
         const hasTopicData = isTopic && selectedEntity.topicData;
         // Prefer full topics array (with QoS, type info) over topicsInfo (names only)
         const hasTopicsArray = isComponent && selectedEntity.topics && selectedEntity.topics.length > 0;
@@ -467,6 +558,8 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
         // Get icon for entity type
         const getEntityTypeIcon = () => {
             switch (selectedEntity.type) {
+                case 'server':
+                    return <Server className="w-6 h-6 text-primary" />;
                 case 'area':
                     return <Layers className="w-6 h-6 text-cyan-500" />;
                 case 'component':
@@ -483,6 +576,8 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
         // Get background color for entity type
         const getEntityBgColor = () => {
             switch (selectedEntity.type) {
+                case 'server':
+                    return 'bg-primary/10';
                 case 'area':
                     return 'bg-cyan-100 dark:bg-cyan-900';
                 case 'component':
@@ -530,6 +625,15 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
                         </nav>
                     )}
 
+                    {/* Server Entity View */}
+                    {isServer && !hasError && (
+                        <ServerPanel
+                            serverName={selectedEntity.name}
+                            versionInfo={selectedEntity.versionInfo as VersionInfo | undefined}
+                            serverUrl={selectedEntity.serverUrl as string | undefined}
+                        />
+                    )}
+
                     {/* Area Entity View */}
                     {isArea && !hasError && (
                         <AreasPanel areaId={selectedEntity.id} areaName={selectedEntity.name} path={selectedPath} />
@@ -561,7 +665,7 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
                     )}
 
                     {/* Component/Generic Header */}
-                    {!isArea && !isApp && !isFunction && (
+                    {!isServer && !isArea && !isApp && !isFunction && (
                         <Card>
                             <CardHeader>
                                 <div className="flex items-start justify-between">
