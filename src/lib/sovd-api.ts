@@ -1484,6 +1484,66 @@ export class SovdApiClient {
 
         return await response.json();
     }
+
+    // ===========================================================================
+    // HIERARCHY API (Subareas & Subcomponents)
+    // ===========================================================================
+
+    /**
+     * List subareas for an area
+     * @param areaId Area identifier
+     */
+    async listSubareas(areaId: string): Promise<SovdEntity[]> {
+        const response = await fetchWithTimeout(this.getUrl(`areas/${areaId}/subareas`), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                return [];
+            }
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        const items = Array.isArray(data) ? data : (data.items ?? data.subareas ?? []);
+        return items.map((item: { id: string; name?: string }) => ({
+            id: item.id,
+            name: item.name || item.id,
+            type: 'subarea',
+            href: `/areas/${areaId}/subareas/${item.id}`,
+            hasChildren: true,
+        }));
+    }
+
+    /**
+     * List subcomponents for a component
+     * @param componentId Component identifier
+     */
+    async listSubcomponents(componentId: string): Promise<SovdEntity[]> {
+        const response = await fetchWithTimeout(this.getUrl(`components/${componentId}/subcomponents`), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                return [];
+            }
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        const items = Array.isArray(data) ? data : (data.items ?? data.subcomponents ?? []);
+        return items.map((item: { id: string; name?: string; fqn?: string }) => ({
+            id: item.id,
+            name: item.fqn || item.name || item.id,
+            type: 'subcomponent',
+            href: `/components/${componentId}/subcomponents/${item.id}`,
+            hasChildren: true,
+        }));
+    }
 }
 
 /**

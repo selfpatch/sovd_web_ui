@@ -123,16 +123,20 @@ export interface TopicNodeData {
 }
 
 /**
- * Virtual folder data for component/app subfolders
+ * Virtual folder data for entity subfolders
  */
 export interface VirtualFolderData {
-    /** Type of virtual folder: data, operations, configurations, faults, or apps */
-    folderType: 'data' | 'operations' | 'configurations' | 'faults' | 'apps';
-    /** Parent entity ID (component or app) */
-    componentId: string;
-    /** Parent entity type */
-    entityType: 'component' | 'app';
-    /** Topics info (for data folder) */
+    /**
+     * Type of virtual folder:
+     * - resources: container for data/operations/configurations/faults
+     * - data, operations, configurations, faults: resource collections inside resources/
+     */
+    folderType: 'resources' | 'data' | 'operations' | 'configurations' | 'faults';
+    /** Parent entity ID */
+    entityId: string;
+    /** Parent entity type (area, subarea, component, subcomponent, app) */
+    entityType: 'area' | 'subarea' | 'component' | 'subcomponent' | 'app';
+    /** Topics info (for data folder) - legacy support */
     topicsInfo?: ComponentTopicsInfo;
 }
 
@@ -140,7 +144,7 @@ export interface VirtualFolderData {
  * Type guard for VirtualFolderData
  */
 export function isVirtualFolderData(data: unknown): data is VirtualFolderData {
-    return !!data && typeof data === 'object' && 'folderType' in data && 'componentId' in data;
+    return !!data && typeof data === 'object' && 'folderType' in data && 'entityId' in data;
 }
 
 /**

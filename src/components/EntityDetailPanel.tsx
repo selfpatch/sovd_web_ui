@@ -15,6 +15,7 @@ import {
     Cpu,
     GitBranch,
     Home,
+    AlertTriangle,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -34,7 +35,7 @@ import { FaultsDashboard } from '@/components/FaultsDashboard';
 import { useAppStore, type AppState } from '@/lib/store';
 import type { ComponentTopic, Parameter } from '@/lib/types';
 
-type ComponentTab = 'data' | 'operations' | 'configurations';
+type ComponentTab = 'data' | 'operations' | 'configurations' | 'faults';
 
 interface TabConfig {
     id: ComponentTab;
@@ -46,7 +47,8 @@ interface TabConfig {
 const COMPONENT_TABS: TabConfig[] = [
     { id: 'data', label: 'Data', icon: Database, description: 'Topics & messages' },
     { id: 'operations', label: 'Operations', icon: Zap, description: 'Services & actions' },
-    { id: 'configurations', label: 'Configurations', icon: Settings, description: 'Parameters' },
+    { id: 'configurations', label: 'Config', icon: Settings, description: 'Parameters' },
+    { id: 'faults', label: 'Faults', icon: AlertTriangle, description: 'Diagnostic trouble codes' },
 ];
 
 /**
@@ -86,6 +88,8 @@ function ComponentTabContent({
             return <OperationsPanel componentId={componentId} />;
         case 'configurations':
             return <ConfigurationPanel componentId={componentId} />;
+        case 'faults':
+            return <FaultsPanel componentId={componentId} />;
         default:
             return null;
     }
@@ -299,7 +303,7 @@ function ParameterDetailCard({ entity, componentId }: ParameterDetailCardProps) 
  * Virtual folder content - redirect to appropriate panel
  */
 interface VirtualFolderContentProps {
-    folderType: 'data' | 'operations' | 'configurations' | 'faults';
+    folderType: 'resources' | 'data' | 'operations' | 'configurations' | 'faults' | 'subareas' | 'subcomponents';
     componentId: string;
     basePath: string;
     entityType?: 'components' | 'apps';
@@ -312,6 +316,33 @@ function VirtualFolderContent({
     entityType = 'components',
 }: VirtualFolderContentProps) {
     switch (folderType) {
+        case 'resources':
+            return (
+                <Card>
+                    <CardContent className="pt-6">
+                        <div className="text-center text-muted-foreground">
+                            <p>Resources for {componentId}</p>
+                            <p className="text-sm mt-2">
+                                Expand this folder to view data, operations, configurations, and faults.
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
+            );
+        case 'subareas':
+        case 'subcomponents':
+            return (
+                <Card>
+                    <CardContent className="pt-6">
+                        <div className="text-center text-muted-foreground">
+                            <p>
+                                {folderType === 'subareas' ? 'Subareas' : 'Subcomponents'} for {componentId}
+                            </p>
+                            <p className="text-sm mt-2">Expand this folder to view child {folderType}.</p>
+                        </div>
+                    </CardContent>
+                </Card>
+            );
         case 'data':
             return <DataFolderPanel basePath={basePath} />;
         case 'operations':
@@ -644,18 +675,36 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
                         // Virtual folder selected - show appropriate panel
                         (() => {
                             // Extract base path (component path) from folder path
-                            // e.g., /root/route_server/data -> /root/route_server
+                            // e.g., /root/route_server/resources/data -> /root/route_server
                             const folderPathParts = selectedPath.split('/');
-                            folderPathParts.pop(); // Remove folder name (data/operations/configurations/faults)
+                            // Remove folder names (e.g., data/operations/configurations/faults and resources)
+                            while (
+                                folderPathParts.length > 0 &&
+                                ['data', 'operations', 'configurations', 'faults', 'resources'].includes(
+                                    folderPathParts[folderPathParts.length - 1] || ''
+                                )
+                            ) {
+                                folderPathParts.pop();
+                            }
                             const basePath = folderPathParts.join('/');
                             // Determine entity type from folder data
                             const entityType = selectedEntity.entityType === 'app' ? 'apps' : 'components';
+                            // Use entityId (new) or componentId (legacy) for backward compatibility
+                            const componentId =
+                                (selectedEntity.entityId as string) || (selectedEntity.componentId as string);
                             return (
                                 <VirtualFolderContent
                                     folderType={
-                                        selectedEntity.folderType as 'data' | 'operations' | 'configurations' | 'faults'
+                                        selectedEntity.folderType as
+                                            | 'resources'
+                                            | 'data'
+                                            | 'operations'
+                                            | 'configurations'
+                                            | 'faults'
+                                            | 'subareas'
+                                            | 'subcomponents'
                                     }
-                                    componentId={selectedEntity.componentId as string}
+                                    componentId={componentId}
                                     basePath={basePath}
                                     entityType={entityType}
                                 />

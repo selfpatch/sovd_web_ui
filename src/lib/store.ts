@@ -113,133 +113,32 @@ export interface AppState {
 
 /**
  * Convert SovdEntity to EntityTreeNode
+ *
+ * Structure - flat hierarchy with type tags:
+ * - Area: subareas and components loaded as direct children on expand
+ * - Subarea: same as Area
+ * - Component: subcomponents and apps loaded as direct children on expand
+ * - Subcomponent: same as Component
+ * - App: leaf node (no children in tree)
+ *
+ * Resources (data, operations, configurations, faults) are shown in the detail panel,
+ * not as tree nodes.
  */
 function toTreeNode(entity: SovdEntity, parentPath: string = ''): EntityTreeNode {
     const path = parentPath ? `${parentPath}/${entity.id}` : `/${entity.id}`;
+    const entityType = entity.type.toLowerCase();
 
-    // If this is a component, create virtual subfolders: data/, operations/, configurations/, faults/, apps/
-    let children: EntityTreeNode[] | undefined;
-    if (entity.type === 'component') {
-        // Create virtual subfolder nodes for component
-        children = [
-            {
-                id: 'data',
-                name: 'data',
-                type: 'folder',
-                href: `${path}/data`,
-                path: `${path}/data`,
-                hasChildren: true, // Topics will be loaded here
-                isLoading: false,
-                isExpanded: false,
-                data: {
-                    folderType: 'data',
-                    componentId: entity.id,
-                    entityType: 'component',
-                    topicsInfo: entity.topicsInfo,
-                },
-            },
-            {
-                id: 'operations',
-                name: 'operations',
-                type: 'folder',
-                href: `${path}/operations`,
-                path: `${path}/operations`,
-                hasChildren: true, // Services/actions loaded on demand
-                isLoading: false,
-                isExpanded: false,
-                data: { folderType: 'operations', componentId: entity.id, entityType: 'component' },
-            },
-            {
-                id: 'configurations',
-                name: 'configurations',
-                type: 'folder',
-                href: `${path}/configurations`,
-                path: `${path}/configurations`,
-                hasChildren: true, // Parameters loaded on demand
-                isLoading: false,
-                isExpanded: false,
-                data: { folderType: 'configurations', componentId: entity.id, entityType: 'component' },
-            },
-            {
-                id: 'faults',
-                name: 'faults',
-                type: 'folder',
-                href: `${path}/faults`,
-                path: `${path}/faults`,
-                hasChildren: true, // Faults loaded on demand
-                isLoading: false,
-                isExpanded: false,
-                data: { folderType: 'faults', componentId: entity.id, entityType: 'component' },
-            },
-            {
-                id: 'apps',
-                name: 'apps',
-                type: 'folder',
-                href: `${path}/apps`,
-                path: `${path}/apps`,
-                hasChildren: true, // Apps (ROS 2 nodes) loaded on demand
-                isLoading: false,
-                isExpanded: false,
-                data: { folderType: 'apps', componentId: entity.id, entityType: 'component' },
-            },
-        ];
-    }
-    // If this is an app, create virtual subfolders: data/, operations/, configurations/, faults/
-    else if (entity.type === 'app') {
-        children = [
-            {
-                id: 'data',
-                name: 'data',
-                type: 'folder',
-                href: `${path}/data`,
-                path: `${path}/data`,
-                hasChildren: true,
-                isLoading: false,
-                isExpanded: false,
-                data: { folderType: 'data', componentId: entity.id, entityType: 'app' },
-            },
-            {
-                id: 'operations',
-                name: 'operations',
-                type: 'folder',
-                href: `${path}/operations`,
-                path: `${path}/operations`,
-                hasChildren: true,
-                isLoading: false,
-                isExpanded: false,
-                data: { folderType: 'operations', componentId: entity.id, entityType: 'app' },
-            },
-            {
-                id: 'configurations',
-                name: 'configurations',
-                type: 'folder',
-                href: `${path}/configurations`,
-                path: `${path}/configurations`,
-                hasChildren: true,
-                isLoading: false,
-                isExpanded: false,
-                data: { folderType: 'configurations', componentId: entity.id, entityType: 'app' },
-            },
-            {
-                id: 'faults',
-                name: 'faults',
-                type: 'folder',
-                href: `${path}/faults`,
-                path: `${path}/faults`,
-                hasChildren: true,
-                isLoading: false,
-                isExpanded: false,
-                data: { folderType: 'faults', componentId: entity.id, entityType: 'app' },
-            },
-        ];
-    }
+    // Areas and components have children (loaded on expand)
+    // Apps are leaf nodes - their resources are shown in the detail panel
+    const hasChildren = entityType !== 'app';
 
     return {
         ...entity,
         path,
-        children,
+        children: undefined, // Children loaded lazily on expand
         isLoading: false,
         isExpanded: false,
+        hasChildren,
     };
 }
 
@@ -402,11 +301,18 @@ export const useAppStore = create<AppState>()(
                 // Check if we already have this data in the tree
                 const node = findNode(rootEntities, path);
 
-                // Handle virtual folders (data/, operations/, configurations/)
+                // Handle virtual folders (resources/, data/, operations/, configurations/, etc.)
                 if (node && isVirtualFolderData(node.data)) {
                     const folderData = node.data as VirtualFolderData;
 
-                    // Skip if already has loaded children
+                    // Resources folder - children are already defined, just expand
+                    if (folderData.folderType === 'resources') {
+                        // Resources folder has static children (data/operations/configurations/faults)
+                        // They are created in toTreeNode, nothing to load
+                        return;
+                    }
+
+                    // Skip if already has loaded children (for folders that need API calls)
                     if (node.children && node.children.length > 0) {
                         return;
                     }
@@ -416,13 +322,14 @@ export const useAppStore = create<AppState>()(
                     try {
                         let children: EntityTreeNode[] = [];
 
+                        // Map entityType to API collection name
+                        const apiEntityType = folderData.entityType === 'app' ? 'apps' : 'components';
+
                         if (folderData.folderType === 'data') {
                             // Load topics for data folder
-                            // For apps, use apps API; for components, use getEntities
                             if (folderData.entityType === 'app') {
-                                const topics = await client.getAppData(folderData.componentId);
+                                const topics = await client.getAppData(folderData.entityId);
                                 children = topics.map((topic) => {
-                                    // Use uniqueKey if available (includes direction), otherwise just topic name
                                     const uniqueId = topic.uniqueKey || topic.topic;
                                     const cleanName = uniqueId.startsWith('/') ? uniqueId.slice(1) : uniqueId;
                                     const encodedName = encodeURIComponent(cleanName);
@@ -443,7 +350,9 @@ export const useAppStore = create<AppState>()(
                                     };
                                 });
                             } else {
-                                const topics = await client.getEntities(path.replace('/data', ''));
+                                // For areas and components - use entity path without /resources/data
+                                const entityPath = path.replace('/resources/data', '');
+                                const topics = await client.getEntities(entityPath);
                                 children = topics.map((topic: SovdEntity & { data?: ComponentTopic }) => {
                                     const cleanName = topic.name.startsWith('/') ? topic.name.slice(1) : topic.name;
                                     const encodedName = encodeURIComponent(cleanName);
@@ -468,8 +377,7 @@ export const useAppStore = create<AppState>()(
                             }
                         } else if (folderData.folderType === 'operations') {
                             // Load operations for operations folder
-                            const entityType = folderData.entityType === 'app' ? 'apps' : 'components';
-                            const ops = await client.listOperations(folderData.componentId, entityType);
+                            const ops = await client.listOperations(folderData.entityId, apiEntityType);
                             children = ops.map((op) => ({
                                 id: op.name,
                                 name: op.name,
@@ -483,7 +391,7 @@ export const useAppStore = create<AppState>()(
                             }));
                         } else if (folderData.folderType === 'configurations') {
                             // Load parameters for configurations folder
-                            const config = await client.listConfigurations(folderData.componentId);
+                            const config = await client.listConfigurations(folderData.entityId, apiEntityType);
                             children = config.parameters.map((param) => ({
                                 id: param.name,
                                 name: param.name,
@@ -497,8 +405,7 @@ export const useAppStore = create<AppState>()(
                             }));
                         } else if (folderData.folderType === 'faults') {
                             // Load faults for this entity
-                            const entityType = folderData.entityType === 'app' ? 'apps' : 'components';
-                            const faultsResponse = await client.listEntityFaults(entityType, folderData.componentId);
+                            const faultsResponse = await client.listEntityFaults(apiEntityType, folderData.entityId);
                             children = faultsResponse.items.map((fault) => ({
                                 id: fault.code,
                                 name: `${fault.code}: ${fault.message}`,
@@ -510,13 +417,9 @@ export const useAppStore = create<AppState>()(
                                 isExpanded: false,
                                 data: fault,
                             }));
-                        } else if (folderData.folderType === 'apps') {
-                            // Load apps belonging to this component using efficient server-side filtering
-                            const componentApps = await client.listComponentApps(folderData.componentId);
-                            children = componentApps.map((app) =>
-                                toTreeNode({ ...app, type: 'app', hasChildren: true }, path)
-                            );
                         }
+                        // Note: subareas and subcomponents are no longer loaded via folder
+                        // They are loaded as direct children of area/component entities
 
                         const updatedTree = updateNodeInTree(rootEntities, path, (n) => ({
                             ...n,
@@ -531,8 +434,8 @@ export const useAppStore = create<AppState>()(
                         });
                     } catch (error) {
                         const message = error instanceof Error ? error.message : 'Unknown error';
-                        // Don't show error for empty results - some components may not have operations/configs
-                        if (!message.includes('not found')) {
+                        // Don't show error for empty results - some entities may not have resources
+                        if (!message.includes('not found') && !message.includes('404')) {
                             toast.error(`Failed to load ${folderData.folderType}: ${message}`);
                         }
                         // Still update tree to show empty folder
@@ -550,11 +453,85 @@ export const useAppStore = create<AppState>()(
                     return;
                 }
 
-                // Regular node loading (areas, components)
+                // Regular node loading for entities (areas, subareas, components, subcomponents)
+                // These load their direct children: areas load subareas+components, components load subcomponents+apps
+                const nodeType = node?.type?.toLowerCase() || '';
+
+                // Check if this is a loadable entity type
+                const isAreaOrSubarea = nodeType === 'area' || nodeType === 'subarea';
+                const isComponentOrSubcomponent = nodeType === 'component' || nodeType === 'subcomponent';
+
+                if (node && (isAreaOrSubarea || isComponentOrSubcomponent)) {
+                    // Check if we already loaded children
+                    if (node.children && node.children.length > 0) {
+                        // Already loaded children, skip fetch
+                        return;
+                    }
+
+                    set({ loadingPaths: [...loadingPaths, path] });
+
+                    try {
+                        let loadedEntities: EntityTreeNode[] = [];
+
+                        if (isAreaOrSubarea) {
+                            // Load both subareas and components for this area
+                            // API returns mixed: components come from getEntities, subareas from listSubareas
+                            const [components, subareas] = await Promise.all([
+                                client.getEntities(path),
+                                client.listSubareas(node.id).catch(() => []),
+                            ]);
+
+                            // Components from getEntities
+                            const componentNodes = components.map((e: SovdEntity) => toTreeNode(e, path));
+                            // Subareas with type 'subarea'
+                            const subareaNodes = subareas.map((subarea) =>
+                                toTreeNode({ ...subarea, type: 'subarea', hasChildren: true }, path)
+                            );
+
+                            loadedEntities = [...subareaNodes, ...componentNodes];
+                        } else if (isComponentOrSubcomponent) {
+                            // Load both subcomponents and apps for this component
+                            const [apps, subcomponents] = await Promise.all([
+                                client.listComponentApps(node.id),
+                                client.listSubcomponents(node.id).catch(() => []),
+                            ]);
+
+                            // Apps - leaf nodes (no children in tree, resources shown in panel)
+                            const appNodes = apps.map((app) =>
+                                toTreeNode({ ...app, type: 'app', hasChildren: false }, path)
+                            );
+                            // Subcomponents with type 'subcomponent'
+                            const subcompNodes = subcomponents.map((subcomp) =>
+                                toTreeNode({ ...subcomp, type: 'subcomponent', hasChildren: true }, path)
+                            );
+
+                            loadedEntities = [...subcompNodes, ...appNodes];
+                        }
+
+                        const updatedTree = updateNodeInTree(rootEntities, path, (n) => ({
+                            ...n,
+                            children: loadedEntities,
+                            hasChildren: loadedEntities.length > 0,
+                            isLoading: false,
+                        }));
+
+                        set({
+                            rootEntities: updatedTree,
+                            loadingPaths: get().loadingPaths.filter((p) => p !== path),
+                        });
+                    } catch (error) {
+                        const message = error instanceof Error ? error.message : 'Unknown error';
+                        if (!message.includes('not found') && !message.includes('404')) {
+                            toast.error(`Failed to load children for ${path}: ${message}`);
+                        }
+                        set({ loadingPaths: get().loadingPaths.filter((p) => p !== path) });
+                    }
+                    return;
+                }
+
+                // For non-entity nodes, use regular loading
                 if (node && Array.isArray(node.children) && node.children.length > 0) {
                     // Check if children have full data or just TopicNodeData
-                    // TopicNodeData has isPublisher/isSubscriber but no 'type' field in data
-                    // Full ComponentTopic has 'type' field (e.g., "sensor_msgs/msg/Temperature")
                     const firstChild = node.children[0];
                     const hasFullData =
                         firstChild?.data && typeof firstChild.data === 'object' && 'type' in firstChild.data;
@@ -563,7 +540,6 @@ export const useAppStore = create<AppState>()(
                         // Already have full data, skip fetch
                         return;
                     }
-                    // Have only TopicNodeData - need to fetch full data
                 }
 
                 // Mark as loading
@@ -703,10 +679,10 @@ export const useAppStore = create<AppState>()(
                     return;
                 }
 
-                // Optimization for Component - just select it and auto-expand
-                // Don't modify children - virtual folders (data/, operations/, configurations/, faults/, apps/) are already there
-                if (node && node.type === 'component') {
-                    // Auto-expand component to show virtual folders
+                // Optimization for Component/Subcomponent - just select it and auto-expand
+                // Don't modify children - virtual folders (resources/, subcomponents/) are already there
+                if (node && (node.type === 'component' || node.type === 'subcomponent')) {
+                    // Auto-expand to show virtual folders
                     const newExpandedPaths = expandedPaths.includes(path) ? expandedPaths : [...expandedPaths, path];
 
                     set({
@@ -720,6 +696,24 @@ export const useAppStore = create<AppState>()(
                             href: node.href,
                             // Pass topicsInfo if available for the Data tab
                             topicsInfo: node.topicsInfo,
+                        },
+                    });
+                    return;
+                }
+
+                // Handle Area/Subarea entity selection - auto-expand to show virtual folders
+                if (node && (node.type === 'area' || node.type === 'subarea')) {
+                    const newExpandedPaths = expandedPaths.includes(path) ? expandedPaths : [...expandedPaths, path];
+
+                    set({
+                        selectedPath: path,
+                        expandedPaths: newExpandedPaths,
+                        isLoadingDetails: false,
+                        selectedEntity: {
+                            id: node.id,
+                            name: node.name,
+                            type: node.type,
+                            href: node.href,
                         },
                     });
                     return;
@@ -779,12 +773,12 @@ export const useAppStore = create<AppState>()(
                         isLoadingDetails: false,
                         selectedEntity: {
                             id: node.id,
-                            name: `${folderData.componentId} / ${node.name}`,
+                            name: `${folderData.entityId} / ${node.name}`,
                             type: 'folder',
                             href: node.href,
                             // Pass folder info so detail panel knows what to show
                             folderType: folderData.folderType,
-                            componentId: folderData.componentId,
+                            entityId: folderData.entityId,
                             entityType: folderData.entityType,
                         },
                     });
