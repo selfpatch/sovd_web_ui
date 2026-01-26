@@ -917,6 +917,54 @@ export class SovdApiClient {
     }
 
     /**
+     * List apps (ROS 2 nodes) belonging to a specific component
+     * Uses GET /components/{id}/hosts endpoint for efficient server-side filtering
+     * @param componentId Component ID
+     */
+    async listComponentApps(componentId: string): Promise<App[]> {
+        const response = await fetchWithTimeout(this.getUrl(`components/${componentId}/hosts`), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        interface ApiAppResponse {
+            id: string;
+            name: string;
+            href?: string;
+            'x-medkit'?: {
+                is_online?: boolean;
+                ros2?: { node?: string };
+                source?: string;
+            };
+        }
+
+        const items = unwrapItems<ApiAppResponse>(await response.json());
+        return items.map((item) => {
+            const xMedkit = item['x-medkit'] || {};
+            const nodePath = xMedkit.ros2?.node || `/${item.name}`;
+            const lastSlash = nodePath.lastIndexOf('/');
+            const namespace = lastSlash > 0 ? nodePath.substring(0, lastSlash) : '/';
+            const nodeName = lastSlash >= 0 ? nodePath.substring(lastSlash + 1) : item.name;
+
+            return {
+                id: item.id,
+                name: item.name,
+                href: item.href || `/api/v1/apps/${item.id}`,
+                type: 'app',
+                hasChildren: true,
+                node_name: nodeName,
+                namespace: namespace,
+                fqn: nodePath,
+                component_id: componentId,
+            };
+        });
+    }
+
+    /**
      * Get app capabilities
      * @param appId App identifier
      */
