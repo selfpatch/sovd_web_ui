@@ -207,15 +207,34 @@ export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
     return (
         <Collapsible open={isExpanded} onOpenChange={handleToggle}>
             <div
+                role="treeitem"
+                aria-selected={isSelected}
+                aria-expanded={hasChildren ? isExpanded : undefined}
+                aria-label={`${node.type} ${node.name}`}
+                tabIndex={0}
                 className={cn(
                     'flex items-center gap-1 py-1.5 px-2 rounded-md cursor-pointer hover:bg-accent/50 transition-colors',
+                    'focus:outline-none focus:ring-2 focus:ring-primary/50',
                     isSelected && 'bg-primary/10 text-primary font-medium'
                 )}
                 style={{ paddingLeft: `${depth * 16 + 8}px` }}
                 onClick={handleSelect}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleSelect(e as unknown as React.MouseEvent);
+                    } else if (e.key === 'ArrowRight' && hasChildren && !isExpanded) {
+                        e.preventDefault();
+                        handleToggle();
+                    } else if (e.key === 'ArrowLeft' && hasChildren && isExpanded) {
+                        e.preventDefault();
+                        handleToggle();
+                    }
+                }}
             >
                 <CollapsibleTrigger asChild onClick={(e) => e.stopPropagation()}>
                     <button
+                        aria-label={isExpanded ? 'Collapse' : 'Expand'}
                         className={cn(
                             'p-0.5 rounded hover:bg-primary/10 transition-transform',
                             !hasChildren && 'invisible'

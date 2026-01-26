@@ -128,13 +128,17 @@ export function EntityTreeSidebar({ onSettingsClick, onFaultsDashboardClick }: E
             {isConnected && (
                 <div className="px-3 py-2 border-b">
                     <div className="relative">
-                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Search
+                            className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"
+                            aria-hidden="true"
+                        />
                         <Input
                             type="text"
                             placeholder="Search entities... (⌘K)"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="pl-8 pr-8 h-8 text-sm"
+                            aria-label="Search entities"
                         />
                         {searchQuery && (
                             <Button
@@ -142,6 +146,7 @@ export function EntityTreeSidebar({ onSettingsClick, onFaultsDashboardClick }: E
                                 size="icon"
                                 className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
                                 onClick={handleClearSearch}
+                                aria-label="Clear search"
                             >
                                 <X className="w-3 h-3" />
                             </Button>
@@ -151,7 +156,7 @@ export function EntityTreeSidebar({ onSettingsClick, onFaultsDashboardClick }: E
             )}
 
             {/* Tree content */}
-            <div className="flex-1 overflow-y-auto p-2">
+            <div role="tree" aria-label="Entity tree navigation" className="flex-1 overflow-y-auto p-2">
                 {!isConnected ? (
                     <EmptyState type="no-connection" />
                 ) : isLoading ? (
@@ -163,7 +168,7 @@ export function EntityTreeSidebar({ onSettingsClick, onFaultsDashboardClick }: E
                         {searchQuery && <p className="text-xs mt-1">Try a different search term</p>}
                     </div>
                 ) : (
-                    <div className="space-y-0.5">
+                    <div role="group" className="space-y-0.5">
                         {filteredEntities.map((entity) => (
                             <EntityTreeNode key={entity.path} node={entity} depth={0} />
                         ))}
