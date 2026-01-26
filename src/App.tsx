@@ -9,23 +9,38 @@ import { SearchCommand } from '@/components/SearchCommand';
 import { useSearchShortcut } from '@/hooks/useSearchShortcut';
 import { useAppStore } from '@/lib/store';
 
+type ViewMode = 'entity' | 'faults-dashboard';
+
 function App() {
-    const { isConnected, serverUrl, baseEndpoint, connect } = useAppStore(
+    const { isConnected, serverUrl, baseEndpoint, connect, clearSelection } = useAppStore(
         useShallow((state) => ({
             isConnected: state.isConnected,
             serverUrl: state.serverUrl,
             baseEndpoint: state.baseEndpoint,
             connect: state.connect,
+            clearSelection: state.clearSelection,
         }))
     );
 
     const [showConnectionDialog, setShowConnectionDialog] = useState(false);
     const [showSearch, setShowSearch] = useState(false);
+    const [viewMode, setViewMode] = useState<ViewMode>('entity');
     const autoConnectAttempted = useRef(false);
 
     // Keyboard shortcut: Ctrl+K / Cmd+K to open search
     const openSearch = useCallback(() => setShowSearch(true), []);
     useSearchShortcut(openSearch);
+
+    // Handle faults dashboard navigation
+    const handleFaultsDashboardClick = useCallback(() => {
+        clearSelection();
+        setViewMode('faults-dashboard');
+    }, [clearSelection]);
+
+    // When entity is selected, switch back to entity view
+    const handleEntitySelect = useCallback(() => {
+        setViewMode('entity');
+    }, []);
 
     // Auto-connect on mount if we have a stored URL
     useEffect(() => {
@@ -43,8 +58,15 @@ function App() {
 
     return (
         <div className="flex h-screen bg-background">
-            <EntityTreeSidebar onSettingsClick={() => setShowConnectionDialog(true)} />
-            <EntityDetailPanel onConnectClick={() => setShowConnectionDialog(true)} />
+            <EntityTreeSidebar
+                onSettingsClick={() => setShowConnectionDialog(true)}
+                onFaultsDashboardClick={handleFaultsDashboardClick}
+            />
+            <EntityDetailPanel
+                onConnectClick={() => setShowConnectionDialog(true)}
+                viewMode={viewMode}
+                onEntitySelect={handleEntitySelect}
+            />
             <ServerConnectionDialog open={showConnectionDialog} onOpenChange={setShowConnectionDialog} />
             <SearchCommand open={showSearch} onOpenChange={setShowSearch} />
             <ToastContainer

@@ -1,17 +1,19 @@
 import { useState, useMemo } from 'react';
 import { useShallow } from 'zustand/shallow';
-import { Server, Settings, RefreshCw, Search, X } from 'lucide-react';
+import { Server, Settings, RefreshCw, Search, X, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { EntityTreeNode } from '@/components/EntityTreeNode';
 import { EntityTreeSkeleton } from '@/components/EntityTreeSkeleton';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { EmptyState } from '@/components/EmptyState';
+import { FaultsCountBadge } from '@/components/FaultsDashboard';
 import { useAppStore } from '@/lib/store';
 import type { EntityTreeNode as EntityTreeNodeType } from '@/lib/types';
 
 interface EntityTreeSidebarProps {
     onSettingsClick: () => void;
+    onFaultsDashboardClick?: () => void;
 }
 
 /**
@@ -39,7 +41,7 @@ function filterTree(nodes: EntityTreeNodeType[], query: string): EntityTreeNodeT
     return result;
 }
 
-export function EntityTreeSidebar({ onSettingsClick }: EntityTreeSidebarProps) {
+export function EntityTreeSidebar({ onSettingsClick, onFaultsDashboardClick }: EntityTreeSidebarProps) {
     const [searchQuery, setSearchQuery] = useState('');
     const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -168,6 +170,22 @@ export function EntityTreeSidebar({ onSettingsClick }: EntityTreeSidebarProps) {
                     </div>
                 )}
             </div>
+
+            {/* Quick Actions - Faults Dashboard */}
+            {isConnected && (
+                <div className="p-2 border-t">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start gap-2"
+                        onClick={onFaultsDashboardClick}
+                    >
+                        <AlertTriangle className="w-4 h-4 text-amber-500" />
+                        <span>Faults Dashboard</span>
+                        <FaultsCountBadge />
+                    </Button>
+                </div>
+            )}
         </aside>
     );
 }
