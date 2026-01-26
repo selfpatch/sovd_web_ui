@@ -76,8 +76,8 @@ export function EntityTreeSidebar({ onSettingsClick, onFaultsDashboardClick }: E
 
     return (
         <aside className="w-80 border-r bg-card flex flex-col h-full">
-            {/* Header */}
-            <div className="p-4 border-b flex items-center justify-between">
+            {/* Header - with top padding on mobile for menu button */}
+            <div className="p-4 pt-14 md:pt-4 border-b flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <Server className="w-5 h-5 text-primary" />
                     <h2 className="font-semibold">Entity Tree</h2>
