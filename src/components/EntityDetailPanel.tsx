@@ -12,6 +12,10 @@ import {
     Settings,
     RefreshCw,
     Box,
+    Layers,
+    Cpu,
+    GitBranch,
+    Home,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,6 +26,9 @@ import { ConfigurationPanel } from '@/components/ConfigurationPanel';
 import { OperationsPanel } from '@/components/OperationsPanel';
 import { DataFolderPanel } from '@/components/DataFolderPanel';
 import { FaultsPanel } from '@/components/FaultsPanel';
+import { AreasPanel } from '@/components/AreasPanel';
+import { AppsPanel } from '@/components/AppsPanel';
+import { FunctionsPanel } from '@/components/FunctionsPanel';
 import { useAppStore, type AppState } from '@/lib/store';
 import type { ComponentTopic, Parameter } from '@/lib/types';
 
@@ -382,6 +389,9 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
     if (selectedEntity) {
         const isTopic = selectedEntity.type === 'topic';
         const isComponent = selectedEntity.type === 'component';
+        const isArea = selectedEntity.type === 'area';
+        const isApp = selectedEntity.type === 'app';
+        const isFunction = selectedEntity.type === 'function';
         const hasTopicData = isTopic && selectedEntity.topicData;
         // Prefer full topics array (with QoS, type info) over topicsInfo (names only)
         const hasTopicsArray = isComponent && selectedEntity.topics && selectedEntity.topics.length > 0;
@@ -397,70 +407,167 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
         const pathParts = selectedPath.split('/').filter(Boolean);
         const componentId = (pathParts.length >= 2 ? pathParts[1] : pathParts[0]) ?? selectedEntity.id;
 
+        // Get icon for entity type
+        const getEntityTypeIcon = () => {
+            switch (selectedEntity.type) {
+                case 'area':
+                    return <Layers className="w-6 h-6 text-cyan-500" />;
+                case 'component':
+                    return <Box className="w-6 h-6 text-indigo-500" />;
+                case 'app':
+                    return <Cpu className="w-6 h-6 text-emerald-500" />;
+                case 'function':
+                    return <GitBranch className="w-6 h-6 text-violet-500" />;
+                default:
+                    return <Box className="w-6 h-6 text-primary" />;
+            }
+        };
+
+        // Get background color for entity type
+        const getEntityBgColor = () => {
+            switch (selectedEntity.type) {
+                case 'area':
+                    return 'bg-cyan-100 dark:bg-cyan-900';
+                case 'component':
+                    return 'bg-indigo-100 dark:bg-indigo-900';
+                case 'app':
+                    return 'bg-emerald-100 dark:bg-emerald-900';
+                case 'function':
+                    return 'bg-violet-100 dark:bg-violet-900';
+                default:
+                    return 'bg-primary/10';
+            }
+        };
+
+        // Build breadcrumb from path
+        const breadcrumbs = pathParts.map((part, index) => ({
+            label: part,
+            path: '/' + pathParts.slice(0, index + 1).join('/'),
+        }));
+
         return (
             <main className="flex-1 overflow-y-auto p-6 bg-background">
                 <div className="max-w-4xl mx-auto space-y-6">
-                    {/* Component Header with Dashboard style */}
-                    <Card>
-                        <CardHeader>
-                            <div className="flex items-start justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-lg bg-primary/10">
-                                        <Box className="w-6 h-6 text-primary" />
-                                    </div>
-                                    <div>
-                                        <CardTitle className="text-xl">{selectedEntity.name}</CardTitle>
-                                        <CardDescription className="flex items-center gap-2">
-                                            <Badge variant="outline">{selectedEntity.type}</Badge>
-                                            <span className="text-muted-foreground">•</span>
-                                            <span className="font-mono text-xs">{selectedPath}</span>
-                                        </CardDescription>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={refreshSelectedEntity}
-                                        disabled={isRefreshing}
+                    {/* Breadcrumb Navigation */}
+                    {breadcrumbs.length > 0 && (
+                        <nav className="flex items-center gap-1 text-sm text-muted-foreground overflow-x-auto">
+                            <button
+                                onClick={() => selectEntity('/')}
+                                className="flex items-center gap-1 hover:text-primary transition-colors whitespace-nowrap"
+                            >
+                                <Home className="w-4 h-4" />
+                            </button>
+                            {breadcrumbs.map((crumb, index) => (
+                                <div key={crumb.path} className="flex items-center gap-1">
+                                    <ChevronRight className="w-4 h-4 text-muted-foreground/50" />
+                                    <button
+                                        onClick={() => selectEntity(crumb.path)}
+                                        className={`hover:text-primary transition-colors whitespace-nowrap ${
+                                            index === breadcrumbs.length - 1 ? 'text-foreground font-medium' : ''
+                                        }`}
                                     >
-                                        <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-                                        Refresh
-                                    </Button>
-                                    <Button variant="outline" size="sm" onClick={handleCopyEntity}>
-                                        <Copy className="w-4 h-4 mr-2" />
-                                        Copy JSON
-                                    </Button>
+                                        {crumb.label}
+                                    </button>
                                 </div>
-                            </div>
-                        </CardHeader>
+                            ))}
+                        </nav>
+                    )}
 
-                        {/* Tab Navigation for Components */}
-                        {isComponent && (
-                            <div className="px-6 pb-4">
-                                <div className="flex gap-1 p-1 bg-muted rounded-lg">
-                                    {COMPONENT_TABS.map((tab) => {
-                                        const TabIcon = tab.icon;
-                                        const isActive = activeTab === tab.id;
-                                        return (
-                                            <button
-                                                key={tab.id}
-                                                onClick={() => setActiveTab(tab.id)}
-                                                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                                                    isActive
-                                                        ? 'bg-background text-foreground shadow-sm'
-                                                        : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
-                                                }`}
-                                            >
-                                                <TabIcon className="w-4 h-4" />
-                                                {tab.label}
-                                            </button>
-                                        );
-                                    })}
+                    {/* Area Entity View */}
+                    {isArea && !hasError && (
+                        <AreasPanel areaId={selectedEntity.id} areaName={selectedEntity.name} path={selectedPath} />
+                    )}
+
+                    {/* App Entity View */}
+                    {isApp && !hasError && (
+                        <AppsPanel
+                            appId={selectedEntity.id}
+                            appName={selectedEntity.name}
+                            fqn={selectedEntity.fqn as string | undefined}
+                            nodeName={selectedEntity.node_name as string | undefined}
+                            namespace={selectedEntity.namespace as string | undefined}
+                            componentId={selectedEntity.component_id as string | undefined}
+                            path={selectedPath}
+                            onNavigate={selectEntity}
+                        />
+                    )}
+
+                    {/* Function Entity View */}
+                    {isFunction && !hasError && (
+                        <FunctionsPanel
+                            functionId={selectedEntity.id}
+                            functionName={selectedEntity.name}
+                            description={selectedEntity.description as string | undefined}
+                            path={selectedPath}
+                            onNavigate={selectEntity}
+                        />
+                    )}
+
+                    {/* Component/Generic Header */}
+                    {!isArea && !isApp && !isFunction && (
+                        <Card>
+                            <CardHeader>
+                                <div className="flex items-start justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`p-2 rounded-lg ${getEntityBgColor()}`}>
+                                            {getEntityTypeIcon()}
+                                        </div>
+                                        <div>
+                                            <CardTitle className="text-xl">{selectedEntity.name}</CardTitle>
+                                            <CardDescription className="flex items-center gap-2">
+                                                <Badge variant="outline">{selectedEntity.type}</Badge>
+                                                <span className="text-muted-foreground">•</span>
+                                                <span className="font-mono text-xs">{selectedPath}</span>
+                                            </CardDescription>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={refreshSelectedEntity}
+                                            disabled={isRefreshing}
+                                        >
+                                            <RefreshCw
+                                                className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`}
+                                            />
+                                            Refresh
+                                        </Button>
+                                        <Button variant="outline" size="sm" onClick={handleCopyEntity}>
+                                            <Copy className="w-4 h-4 mr-2" />
+                                            Copy JSON
+                                        </Button>
+                                    </div>
                                 </div>
-                            </div>
-                        )}
-                    </Card>
+                            </CardHeader>
+
+                            {/* Tab Navigation for Components */}
+                            {isComponent && (
+                                <div className="px-6 pb-4">
+                                    <div className="flex gap-1 p-1 bg-muted rounded-lg">
+                                        {COMPONENT_TABS.map((tab) => {
+                                            const TabIcon = tab.icon;
+                                            const isActive = activeTab === tab.id;
+                                            return (
+                                                <button
+                                                    key={tab.id}
+                                                    onClick={() => setActiveTab(tab.id)}
+                                                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                                                        isActive
+                                                            ? 'bg-background text-foreground shadow-sm'
+                                                            : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
+                                                    }`}
+                                                >
+                                                    <TabIcon className="w-4 h-4" />
+                                                    {tab.label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </Card>
+                    )}
 
                     {/* Content based on entity type and active tab */}
                     {hasError ? (
@@ -500,7 +607,8 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
                             hasTopicsInfo={hasTopicsInfo ?? false}
                             selectEntity={selectEntity}
                         />
-                    ) : selectedEntity.type === 'service' || selectedEntity.type === 'action' ? (
+                    ) : isArea || isApp || isFunction ? // Already handled above with specialized panels
+                    null : selectedEntity.type === 'service' || selectedEntity.type === 'action' ? (
                         // Service/Action detail view
                         <OperationDetailCard entity={selectedEntity} componentId={componentId} />
                     ) : selectedEntity.type === 'parameter' ? (
