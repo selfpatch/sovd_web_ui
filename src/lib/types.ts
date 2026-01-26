@@ -176,6 +176,29 @@ export interface ComponentTopic {
 }
 
 /**
+ * API response for data item (topic) from GET /components/{id}/data/{topic}
+ * This is the raw response structure from the gateway API.
+ */
+export interface DataItemResponse {
+    /** Topic data payload */
+    data: unknown;
+    /** Item identifier */
+    id: string;
+    /** Extended metadata from ros2_medkit gateway */
+    'x-medkit'?: {
+        ros2?: {
+            type?: string;
+            topic?: string;
+            direction?: string;
+        };
+        timestamp?: number;
+        status?: string;
+        publisher_count?: number;
+        subscriber_count?: number;
+    };
+}
+
+/**
  * Type information for a ROS 2 message type
  */
 export interface TopicTypeInfo {
@@ -498,9 +521,10 @@ export interface AppCapabilities {
 // =============================================================================
 
 /**
- * Function entity representing a capability grouping
+ * SovdFunction entity representing a capability grouping
+ * (Named SovdFunction to avoid shadowing JavaScript's global Function type)
  */
-export interface Function extends SovdEntity {
+export interface SovdFunction extends SovdEntity {
     /** Description of the function */
     description?: string;
     /** IDs of apps that host this function */

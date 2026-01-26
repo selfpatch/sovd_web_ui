@@ -69,20 +69,39 @@ export interface AppState {
     clearSelection: () => void;
 
     // Configurations actions
-    fetchConfigurations: (componentId: string) => Promise<void>;
-    setParameter: (componentId: string, paramName: string, value: unknown) => Promise<boolean>;
-    resetParameter: (componentId: string, paramName: string) => Promise<boolean>;
-    resetAllConfigurations: (componentId: string) => Promise<{ reset_count: number; failed_count: number }>;
+    fetchConfigurations: (entityId: string, entityType?: 'components' | 'apps') => Promise<void>;
+    setParameter: (
+        entityId: string,
+        paramName: string,
+        value: unknown,
+        entityType?: 'components' | 'apps'
+    ) => Promise<boolean>;
+    resetParameter: (entityId: string, paramName: string, entityType?: 'components' | 'apps') => Promise<boolean>;
+    resetAllConfigurations: (
+        entityId: string,
+        entityType?: 'components' | 'apps'
+    ) => Promise<{ reset_count: number; failed_count: number }>;
 
     // Operations actions - updated for SOVD Execution model
-    fetchOperations: (componentId: string) => Promise<void>;
+    fetchOperations: (entityId: string, entityType?: 'components' | 'apps') => Promise<void>;
     createExecution: (
-        componentId: string,
+        entityId: string,
         operationName: string,
-        request: CreateExecutionRequest
+        request: CreateExecutionRequest,
+        entityType?: 'components' | 'apps'
     ) => Promise<CreateExecutionResponse | null>;
-    refreshExecutionStatus: (componentId: string, operationName: string, executionId: string) => Promise<void>;
-    cancelExecution: (componentId: string, operationName: string, executionId: string) => Promise<boolean>;
+    refreshExecutionStatus: (
+        entityId: string,
+        operationName: string,
+        executionId: string,
+        entityType?: 'components' | 'apps'
+    ) => Promise<void>;
+    cancelExecution: (
+        entityId: string,
+        operationName: string,
+        executionId: string,
+        entityType?: 'components' | 'apps'
+    ) => Promise<boolean>;
     setAutoRefreshExecutions: (enabled: boolean) => void;
 
     // Faults actions
@@ -366,7 +385,6 @@ export const useAppStore = create<AppState>()(
                     set({ rootEntities: treeNodes });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
-                    console.error('[DEBUG] Failed to load entities:', error);
                     toast.error(`Failed to load entities: ${message}`);
                 }
             },
@@ -515,7 +533,6 @@ export const useAppStore = create<AppState>()(
                         });
                     } catch (error) {
                         const message = error instanceof Error ? error.message : 'Unknown error';
-                        console.error(`[DEBUG] Failed to load ${folderData.folderType}:`, error);
                         // Don't show error for empty results - some components may not have operations/configs
                         if (!message.includes('not found')) {
                             toast.error(`Failed to load ${folderData.folderType}: ${message}`);
@@ -572,7 +589,6 @@ export const useAppStore = create<AppState>()(
                     });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
-                    console.error(`[DEBUG] Failed to load children for ${path}:`, error);
                     toast.error(`Failed to load children for ${path}: ${message}`);
                     set({ loadingPaths: get().loadingPaths.filter((p) => p !== path) });
                 }
@@ -657,7 +673,6 @@ export const useAppStore = create<AppState>()(
                             set({ selectedEntity: details, isLoadingDetails: false });
                         } catch (error) {
                             const message = error instanceof Error ? error.message : 'Unknown error';
-                            console.error('[DEBUG] Failed to load topic details:', error);
                             toast.error(`Failed to load topic details: ${message}`);
                             set({
                                 selectedEntity: {
@@ -831,7 +846,6 @@ export const useAppStore = create<AppState>()(
                     set({ selectedEntity: details, isLoadingDetails: false });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
-                    console.error(`[DEBUG] Failed to load entity details for ${path}:`, error);
                     toast.error(`Failed to load entity details for ${path}: ${message}`);
 
                     // Set fallback entity to allow panel to render
@@ -872,8 +886,7 @@ export const useAppStore = create<AppState>()(
                 try {
                     const details = await client.getEntityDetails(selectedPath);
                     set({ selectedEntity: details, isRefreshing: false });
-                } catch (error) {
-                    console.error('[DEBUG] Failed to refresh data:', error);
+                } catch {
                     toast.error('Failed to refresh data');
                     set({ isRefreshing: false });
                 }
@@ -891,31 +904,35 @@ export const useAppStore = create<AppState>()(
             // CONFIGURATIONS ACTIONS (ROS 2 Parameters)
             // ===========================================================================
 
-            fetchConfigurations: async (componentId: string) => {
+            fetchConfigurations: async (entityId: string, entityType: 'components' | 'apps' = 'components') => {
                 const { client, configurations } = get();
                 if (!client) return;
 
                 set({ isLoadingConfigurations: true });
 
                 try {
-                    const result = await client.listConfigurations(componentId);
+                    const result = await client.listConfigurations(entityId, entityType);
                     const newConfigs = new Map(configurations);
-                    newConfigs.set(componentId, result.parameters);
+                    newConfigs.set(entityId, result.parameters);
                     set({ configurations: newConfigs, isLoadingConfigurations: false });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
-                    console.error('[DEBUG] Failed to load configurations:', error);
                     toast.error(`Failed to load configurations: ${message}`);
                     set({ isLoadingConfigurations: false });
                 }
             },
 
-            setParameter: async (componentId: string, paramName: string, value: unknown) => {
+            setParameter: async (
+                entityId: string,
+                paramName: string,
+                value: unknown,
+                entityType: 'components' | 'apps' = 'components'
+            ) => {
                 const { client, configurations } = get();
                 if (!client) return false;
 
                 try {
-                    const result = await client.setConfiguration(componentId, paramName, { value });
+                    const result = await client.setConfiguration(entityId, paramName, { value }, entityType);
 
                     // API returns {data: ..., id: ..., x-medkit: {parameter: {...}}}
                     // Success is indicated by presence of x-medkit.parameter (no status field)
@@ -927,11 +944,11 @@ export const useAppStore = create<AppState>()(
                     if (parameter) {
                         // Update local state with new value
                         const newConfigs = new Map(configurations);
-                        const params = newConfigs.get(componentId) || [];
+                        const params = newConfigs.get(entityId) || [];
                         const updatedParams = params.map((p) =>
                             p.name === paramName ? { ...p, value: parameter.value } : p
                         );
-                        newConfigs.set(componentId, updatedParams);
+                        newConfigs.set(entityId, updatedParams);
                         set({ configurations: newConfigs });
                         toast.success(`Parameter ${paramName} updated`);
                         return true;
@@ -939,16 +956,15 @@ export const useAppStore = create<AppState>()(
                         // Legacy format fallback
                         const legacyResult = result as { parameter: { value: unknown } };
                         const newConfigs = new Map(configurations);
-                        const params = newConfigs.get(componentId) || [];
+                        const params = newConfigs.get(entityId) || [];
                         const updatedParams = params.map((p) =>
                             p.name === paramName ? { ...p, value: legacyResult.parameter.value } : p
                         );
-                        newConfigs.set(componentId, updatedParams);
+                        newConfigs.set(entityId, updatedParams);
                         set({ configurations: newConfigs });
                         toast.success(`Parameter ${paramName} updated`);
                         return true;
                     } else {
-                        console.error('[DEBUG] Failed to set parameter - result:', result);
                         toast.error(
                             `Failed to set parameter: ${(result as { error?: string }).error || 'Unknown error'}`
                         );
@@ -956,41 +972,43 @@ export const useAppStore = create<AppState>()(
                     }
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
-                    console.error('[DEBUG] Failed to set parameter:', error);
                     toast.error(`Failed to set parameter: ${message}`);
                     return false;
                 }
             },
 
-            resetParameter: async (componentId: string, paramName: string) => {
+            resetParameter: async (
+                entityId: string,
+                paramName: string,
+                entityType: 'components' | 'apps' = 'components'
+            ) => {
                 const { client, configurations } = get();
                 if (!client) return false;
 
                 try {
-                    const result = await client.resetConfiguration(componentId, paramName);
+                    const result = await client.resetConfiguration(entityId, paramName, entityType);
 
                     // Update local state with reset value
                     const newConfigs = new Map(configurations);
-                    const params = newConfigs.get(componentId) || [];
+                    const params = newConfigs.get(entityId) || [];
                     const updatedParams = params.map((p) => (p.name === paramName ? { ...p, value: result.value } : p));
-                    newConfigs.set(componentId, updatedParams);
+                    newConfigs.set(entityId, updatedParams);
                     set({ configurations: newConfigs });
                     toast.success(`Parameter ${paramName} reset to default`);
                     return true;
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
-                    console.error('[DEBUG] Failed to reset parameter:', error);
                     toast.error(`Failed to reset parameter: ${message}`);
                     return false;
                 }
             },
 
-            resetAllConfigurations: async (componentId: string) => {
+            resetAllConfigurations: async (entityId: string, entityType: 'components' | 'apps' = 'components') => {
                 const { client, fetchConfigurations } = get();
                 if (!client) return { reset_count: 0, failed_count: 0 };
 
                 try {
-                    const result = await client.resetAllConfigurations(componentId);
+                    const result = await client.resetAllConfigurations(entityId, entityType);
 
                     if (result.failed_count === 0) {
                         toast.success(`Reset ${result.reset_count} parameters to defaults`);
@@ -999,12 +1017,11 @@ export const useAppStore = create<AppState>()(
                     }
 
                     // Refresh configurations to get updated values
-                    await fetchConfigurations(componentId);
+                    await fetchConfigurations(entityId, entityType);
 
                     return { reset_count: result.reset_count, failed_count: result.failed_count };
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
-                    console.error('[DEBUG] Failed to reset configurations:', error);
                     toast.error(`Failed to reset configurations: ${message}`);
                     return { reset_count: 0, failed_count: 0 };
                 }
@@ -1014,31 +1031,35 @@ export const useAppStore = create<AppState>()(
             // OPERATIONS ACTIONS (ROS 2 Services & Actions) - SOVD Execution Model
             // ===========================================================================
 
-            fetchOperations: async (componentId: string) => {
+            fetchOperations: async (entityId: string, entityType: 'components' | 'apps' = 'components') => {
                 const { client, operations } = get();
                 if (!client) return;
 
                 set({ isLoadingOperations: true });
 
                 try {
-                    const result = await client.listOperations(componentId);
+                    const result = await client.listOperations(entityId, entityType);
                     const newOps = new Map(operations);
-                    newOps.set(componentId, result);
+                    newOps.set(entityId, result);
                     set({ operations: newOps, isLoadingOperations: false });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
-                    console.error('[DEBUG] Failed to load operations:', error);
                     toast.error(`Failed to load operations: ${message}`);
                     set({ isLoadingOperations: false });
                 }
             },
 
-            createExecution: async (componentId: string, operationName: string, request: CreateExecutionRequest) => {
+            createExecution: async (
+                entityId: string,
+                operationName: string,
+                request: CreateExecutionRequest,
+                entityType: 'components' | 'apps' = 'components'
+            ) => {
                 const { client, activeExecutions } = get();
                 if (!client) return null;
 
                 try {
-                    const result = await client.createExecution(componentId, operationName, request);
+                    const result = await client.createExecution(entityId, operationName, request, entityType);
 
                     if (result.kind === 'action' && !result.error) {
                         // Track the new execution for actions
@@ -1054,41 +1075,48 @@ export const useAppStore = create<AppState>()(
                     } else if (result.kind === 'service' && !result.error) {
                         toast.success(`Service ${operationName} executed successfully`);
                     } else if (result.error) {
-                        console.error('[DEBUG] Operation result error:', result);
                         toast.error(`Operation failed: ${result.error}`);
                     }
 
                     return result;
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
-                    console.error('[DEBUG] Operation execution failed:', error);
                     toast.error(`Operation failed: ${message}`);
                     return null;
                 }
             },
 
-            refreshExecutionStatus: async (componentId: string, operationName: string, executionId: string) => {
+            refreshExecutionStatus: async (
+                entityId: string,
+                operationName: string,
+                executionId: string,
+                entityType: 'components' | 'apps' = 'components'
+            ) => {
                 const { client, activeExecutions } = get();
                 if (!client) return;
 
                 try {
-                    const execution = await client.getExecution(componentId, operationName, executionId);
+                    const execution = await client.getExecution(entityId, operationName, executionId, entityType);
                     const newExecutions = new Map(activeExecutions);
                     newExecutions.set(executionId, execution);
                     set({ activeExecutions: newExecutions });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
-                    console.error('[DEBUG] Failed to refresh execution status:', error);
                     toast.error(`Failed to refresh execution status: ${message}`);
                 }
             },
 
-            cancelExecution: async (componentId: string, operationName: string, executionId: string) => {
+            cancelExecution: async (
+                entityId: string,
+                operationName: string,
+                executionId: string,
+                entityType: 'components' | 'apps' = 'components'
+            ) => {
                 const { client, activeExecutions } = get();
                 if (!client) return false;
 
                 try {
-                    const execution = await client.cancelExecution(componentId, operationName, executionId);
+                    const execution = await client.cancelExecution(entityId, operationName, executionId, entityType);
                     const newExecutions = new Map(activeExecutions);
                     newExecutions.set(executionId, execution);
                     set({ activeExecutions: newExecutions });
@@ -1096,7 +1124,6 @@ export const useAppStore = create<AppState>()(
                     return true;
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
-                    console.error('[DEBUG] Failed to cancel execution:', error);
                     toast.error(`Failed to cancel execution: ${message}`);
                     return false;
                 }
@@ -1121,7 +1148,6 @@ export const useAppStore = create<AppState>()(
                     set({ faults: result.items, isLoadingFaults: false });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
-                    console.error('[DEBUG] Failed to load faults:', error);
                     toast.error(`Failed to load faults: ${message}`);
                     set({ isLoadingFaults: false });
                 }
@@ -1139,7 +1165,6 @@ export const useAppStore = create<AppState>()(
                     return true;
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
-                    console.error('[DEBUG] Failed to clear fault:', error);
                     toast.error(`Failed to clear fault: ${message}`);
                     return false;
                 }

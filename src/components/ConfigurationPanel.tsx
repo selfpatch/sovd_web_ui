@@ -261,7 +261,11 @@ function parseValue(input: string, type: ParameterType): unknown {
     }
 }
 
-export function ConfigurationPanel({ componentId, highlightParam }: ConfigurationPanelProps) {
+export function ConfigurationPanel({
+    componentId,
+    highlightParam,
+    entityType = 'components',
+}: ConfigurationPanelProps) {
     const {
         configurations,
         isLoadingConfigurations,
@@ -286,36 +290,36 @@ export function ConfigurationPanel({ componentId, highlightParam }: Configuratio
     // Fetch configurations on mount (lazy loading)
     useEffect(() => {
         if (!configurations.has(componentId)) {
-            fetchConfigurations(componentId);
+            fetchConfigurations(componentId, entityType);
         }
-    }, [componentId, configurations, fetchConfigurations]);
+    }, [componentId, configurations, fetchConfigurations, entityType]);
 
     const handleRefresh = useCallback(() => {
-        fetchConfigurations(componentId);
-    }, [componentId, fetchConfigurations]);
+        fetchConfigurations(componentId, entityType);
+    }, [componentId, fetchConfigurations, entityType]);
 
     const handleSetParameter = useCallback(
         async (name: string, value: unknown) => {
-            return setParameter(componentId, name, value);
+            return setParameter(componentId, name, value, entityType);
         },
-        [componentId, setParameter]
+        [componentId, setParameter, entityType]
     );
 
     const handleResetParameter = useCallback(
         async (name: string) => {
-            return resetParameter(componentId, name);
+            return resetParameter(componentId, name, entityType);
         },
-        [componentId, resetParameter]
+        [componentId, resetParameter, entityType]
     );
 
     const handleResetAll = useCallback(async () => {
         setIsResettingAll(true);
         try {
-            await resetAllConfigurations(componentId);
+            await resetAllConfigurations(componentId, entityType);
         } finally {
             setIsResettingAll(false);
         }
-    }, [componentId, resetAllConfigurations]);
+    }, [componentId, resetAllConfigurations, entityType]);
 
     if (isLoadingConfigurations && parameters.length === 0) {
         return (
