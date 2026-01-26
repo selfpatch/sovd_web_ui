@@ -11,14 +11,11 @@ import {
     MessageSquare,
     ArrowUp,
     ArrowDown,
-    Database,
     Zap,
     Clock,
-    Settings,
     Sliders,
     AlertTriangle,
     Cpu,
-    Users,
     Layers,
     GitBranch,
     Package,
@@ -26,8 +23,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useAppStore } from '@/lib/store';
-import type { EntityTreeNode as EntityTreeNodeType, TopicNodeData, VirtualFolderData, Parameter } from '@/lib/types';
-import { isVirtualFolderData } from '@/lib/types';
+import type { EntityTreeNode as EntityTreeNodeType, TopicNodeData, Parameter } from '@/lib/types';
 
 interface EntityTreeNodeProps {
     node: EntityTreeNodeType;
@@ -35,44 +31,24 @@ interface EntityTreeNodeProps {
 }
 
 /**
- * Get icon for entity type with visual distinction between entities and resources
+ * Get icon for entity type
  *
  * Entity types (structural):
  * - Area: Layers (namespace grouping)
+ * - Subarea: Layers (nested namespace)
  * - Component: Box (logical grouping)
+ * - Subcomponent: Box (nested component)
  * - App: Cpu (ROS 2 node)
  * - Function: GitBranch (capability grouping)
- *
- * Resource types (data collections):
- * - Data: Database
- * - Operations: Zap
- * - Configurations: Settings
- * - Faults: AlertTriangle
- * - Apps folder: Users
  */
-function getEntityIcon(type: string, data?: unknown, isExpanded?: boolean) {
-    // Check for virtual folder types (resource collections)
-    if (isVirtualFolderData(data)) {
-        const folderData = data as VirtualFolderData;
-        switch (folderData.folderType) {
-            case 'data':
-                return Database;
-            case 'operations':
-                return Zap;
-            case 'configurations':
-                return Settings;
-            case 'faults':
-                return AlertTriangle;
-            case 'apps':
-                return Users;
-        }
-    }
-
+function getEntityIcon(type: string, _data?: unknown, isExpanded?: boolean) {
     switch (type.toLowerCase()) {
         // Entity types
         case 'area':
+        case 'subarea':
             return Layers;
         case 'component':
+        case 'subcomponent':
         case 'ecu':
             return Box;
         case 'app':
@@ -106,32 +82,19 @@ function getEntityIcon(type: string, data?: unknown, isExpanded?: boolean) {
 /**
  * Get color class for entity type
  */
-function getEntityColor(type: string, data?: unknown, isSelected?: boolean): string {
+function getEntityColor(type: string, _data?: unknown, isSelected?: boolean): string {
     if (isSelected) return 'text-primary';
-
-    // Check for virtual folder types (resource collections)
-    if (isVirtualFolderData(data)) {
-        const folderData = data as VirtualFolderData;
-        switch (folderData.folderType) {
-            case 'data':
-                return 'text-blue-500';
-            case 'operations':
-                return 'text-amber-500';
-            case 'configurations':
-                return 'text-purple-500';
-            case 'faults':
-                return 'text-red-500';
-            case 'apps':
-                return 'text-green-500';
-        }
-    }
 
     switch (type.toLowerCase()) {
         case 'area':
             return 'text-cyan-500';
+        case 'subarea':
+            return 'text-cyan-400';
         case 'component':
         case 'ecu':
             return 'text-indigo-500';
+        case 'subcomponent':
+            return 'text-indigo-400';
         case 'app':
             return 'text-emerald-500';
         case 'function':
@@ -186,7 +149,7 @@ export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
     const topicData = isTopicNodeData(node.data) ? node.data : null;
     const parameterData = isParameterData(node.data) ? node.data : null;
 
-    // Load children when expanded and no children loaded yet
+    // Load children when expanded
     useEffect(() => {
         if (isExpanded && !node.children && !isLoading && hasChildren) {
             loadChildren(node.path);

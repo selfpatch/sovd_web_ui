@@ -172,7 +172,7 @@ export function ErrorBoundaryWrapper({
     onRetry,
     title,
     description,
-}: ErrorBoundaryWrapperProps): JSX.Element {
+}: ErrorBoundaryWrapperProps): React.JSX.Element {
     return (
         <ErrorBoundary
             onError={onError}
@@ -197,7 +197,7 @@ interface ErrorFallbackProps {
     onRetry?: () => void;
 }
 
-function ErrorFallback({ title, description, onRetry }: ErrorFallbackProps): JSX.Element {
+function ErrorFallback({ title, description, onRetry }: ErrorFallbackProps): React.JSX.Element {
     return (
         <div className="flex flex-col items-center justify-center p-6 text-center">
             <AlertCircle className="w-10 h-10 text-destructive mb-3" />
