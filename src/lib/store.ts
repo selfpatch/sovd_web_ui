@@ -511,10 +511,8 @@ export const useAppStore = create<AppState>()(
                                 data: fault,
                             }));
                         } else if (folderData.folderType === 'apps') {
-                            // Load apps belonging to this component
-                            // Filter apps by component_id
-                            const allApps = await client.listApps();
-                            const componentApps = allApps.filter((app) => app.component_id === folderData.componentId);
+                            // Load apps belonging to this component using efficient server-side filtering
+                            const componentApps = await client.listComponentApps(folderData.componentId);
                             children = componentApps.map((app) =>
                                 toTreeNode({ ...app, type: 'app', hasChildren: true }, path)
                             );
