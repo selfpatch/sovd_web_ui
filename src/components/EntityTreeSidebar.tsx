@@ -4,6 +4,8 @@ import { Server, Settings, RefreshCw, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { EntityTreeNode } from '@/components/EntityTreeNode';
+import { EntityTreeSkeleton } from '@/components/EntityTreeSkeleton';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { EmptyState } from '@/components/EmptyState';
 import { useAppStore } from '@/lib/store';
 import type { EntityTreeNode as EntityTreeNodeType } from '@/lib/types';
@@ -39,10 +41,12 @@ function filterTree(nodes: EntityTreeNodeType[], query: string): EntityTreeNodeT
 
 export function EntityTreeSidebar({ onSettingsClick }: EntityTreeSidebarProps) {
     const [searchQuery, setSearchQuery] = useState('');
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
-    const { isConnected, serverUrl, rootEntities, loadRootEntities } = useAppStore(
+    const { isConnected, isConnecting, serverUrl, rootEntities, loadRootEntities } = useAppStore(
         useShallow((state) => ({
             isConnected: state.isConnected,
+            isConnecting: state.isConnecting,
             serverUrl: state.serverUrl,
             rootEntities: state.rootEntities,
             loadRootEntities: state.loadRootEntities,
@@ -56,13 +60,17 @@ export function EntityTreeSidebar({ onSettingsClick }: EntityTreeSidebarProps) {
         return filterTree(rootEntities, searchQuery.trim());
     }, [rootEntities, searchQuery]);
 
-    const handleRefresh = () => {
-        loadRootEntities();
+    const handleRefresh = async () => {
+        setIsRefreshing(true);
+        await loadRootEntities();
+        setIsRefreshing(false);
     };
 
     const handleClearSearch = () => {
         setSearchQuery('');
     };
+
+    const isLoading = isConnecting || (isConnected && rootEntities.length === 0 && !searchQuery);
 
     return (
         <aside className="w-80 border-r bg-card flex flex-col h-full">
@@ -73,6 +81,7 @@ export function EntityTreeSidebar({ onSettingsClick }: EntityTreeSidebarProps) {
                     <h2 className="font-semibold">Entity Tree</h2>
                 </div>
                 <div className="flex items-center gap-1">
+                    <ThemeToggle />
                     {isConnected ? (
                         <>
                             <Button
@@ -80,9 +89,10 @@ export function EntityTreeSidebar({ onSettingsClick }: EntityTreeSidebarProps) {
                                 size="icon"
                                 className="h-8 w-8"
                                 onClick={handleRefresh}
+                                disabled={isRefreshing}
                                 title="Refresh entities"
                             >
-                                <RefreshCw className="w-4 h-4" />
+                                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
                             </Button>
                             <Button
                                 variant="ghost"
@@ -142,6 +152,8 @@ export function EntityTreeSidebar({ onSettingsClick }: EntityTreeSidebarProps) {
             <div className="flex-1 overflow-y-auto p-2">
                 {!isConnected ? (
                     <EmptyState type="no-connection" />
+                ) : isLoading ? (
+                    <EntityTreeSkeleton />
                 ) : filteredEntities.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-32 text-muted-foreground text-sm">
                         <Search className="w-8 h-8 mb-2 opacity-50" />
