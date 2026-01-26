@@ -1,0 +1,710 @@
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useShallow } from 'zustand/shallow';
+import {
+    AlertTriangle,
+    AlertCircle,
+    AlertOctagon,
+    Info,
+    CheckCircle,
+    RefreshCw,
+    Filter,
+    Trash2,
+    Loader2,
+    ChevronDown,
+    ChevronRight,
+} from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuCheckboxItem,
+    DropdownMenuTrigger,
+    DropdownMenuSeparator,
+    DropdownMenuLabel,
+} from '@/components/ui/dropdown-menu';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useAppStore } from '@/lib/store';
+import type { Fault, FaultSeverity, FaultStatus } from '@/lib/types';
+
+/**
+ * Default polling interval in milliseconds
+ */
+const DEFAULT_POLL_INTERVAL = 5000;
+
+/**
+ * Get badge variant for fault severity
+ */
+function getSeverityBadgeVariant(severity: FaultSeverity): 'default' | 'secondary' | 'destructive' | 'outline' {
+    switch (severity) {
+        case 'critical':
+        case 'error':
+            return 'destructive';
+        case 'warning':
+            return 'default';
+        case 'info':
+            return 'secondary';
+        default:
+            return 'outline';
+    }
+}
+
+/**
+ * Get icon for fault severity
+ */
+function getSeverityIcon(severity: FaultSeverity) {
+    switch (severity) {
+        case 'critical':
+            return <AlertOctagon className="w-4 h-4" />;
+        case 'error':
+            return <AlertCircle className="w-4 h-4" />;
+        case 'warning':
+            return <AlertTriangle className="w-4 h-4" />;
+        case 'info':
+            return <Info className="w-4 h-4" />;
+        default:
+            return <AlertCircle className="w-4 h-4" />;
+    }
+}
+
+/**
+ * Get color class for severity
+ */
+function getSeverityColorClass(severity: FaultSeverity): string {
+    switch (severity) {
+        case 'critical':
+            return 'text-red-600 dark:text-red-400';
+        case 'error':
+            return 'text-orange-600 dark:text-orange-400';
+        case 'warning':
+            return 'text-yellow-600 dark:text-yellow-400';
+        case 'info':
+            return 'text-blue-600 dark:text-blue-400';
+        default:
+            return 'text-muted-foreground';
+    }
+}
+
+/**
+ * Format timestamp for display
+ */
+function formatTimestamp(timestamp: string): string {
+    try {
+        const date = new Date(timestamp);
+        return date.toLocaleString();
+    } catch {
+        return timestamp;
+    }
+}
+
+/**
+ * Single fault row component
+ */
+function FaultRow({
+    fault,
+    onClear,
+    isClearing,
+}: {
+    fault: Fault;
+    onClear: (code: string) => void;
+    isClearing: boolean;
+}) {
+    const canClear = fault.status === 'active' || fault.status === 'pending';
+
+    return (
+        <div className="flex items-start gap-3 p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
+            {/* Severity Icon */}
+            <div className={`shrink-0 mt-0.5 ${getSeverityColorClass(fault.severity)}`}>
+                {getSeverityIcon(fault.severity)}
+            </div>
+
+            {/* Fault details */}
+            <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-sm font-medium">{fault.code}</span>
+                    <Badge variant={getSeverityBadgeVariant(fault.severity)} className="text-xs">
+                        {fault.severity}
+                    </Badge>
+                    <Badge
+                        variant={
+                            fault.status === 'active' ? 'default' : fault.status === 'pending' ? 'secondary' : 'outline'
+                        }
+                        className="text-xs"
+                    >
+                        {fault.status}
+                    </Badge>
+                </div>
+                <p className="text-sm text-foreground">{fault.message}</p>
+                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <span>{formatTimestamp(fault.timestamp)}</span>
+                    <span className="font-mono">
+                        {fault.entity_type}: {fault.entity_id}
+                    </span>
+                </div>
+            </div>
+
+            {/* Clear button */}
+            {canClear && (
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onClear(fault.code)}
+                    disabled={isClearing}
+                    className="shrink-0"
+                    title="Clear fault"
+                >
+                    {isClearing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                </Button>
+            )}
+        </div>
+    );
+}
+
+/**
+ * Group of faults by entity
+ */
+function FaultGroup({
+    entityId,
+    entityType,
+    faults,
+    onClear,
+    clearingCodes,
+}: {
+    entityId: string;
+    entityType: string;
+    faults: Fault[];
+    onClear: (code: string) => void;
+    clearingCodes: Set<string>;
+}) {
+    const [isOpen, setIsOpen] = useState(true);
+
+    const criticalCount = faults.filter((f) => f.severity === 'critical' || f.severity === 'error').length;
+    const warningCount = faults.filter((f) => f.severity === 'warning').length;
+
+    return (
+        <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+            <CollapsibleTrigger asChild>
+                <div className="flex items-center gap-2 p-2 rounded-lg hover:bg-muted/50 cursor-pointer">
+                    {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                    <span className="font-medium text-sm">{entityId}</span>
+                    <Badge variant="outline" className="text-xs">
+                        {entityType}
+                    </Badge>
+                    <div className="flex-1" />
+                    {criticalCount > 0 && (
+                        <Badge variant="destructive" className="text-xs">
+                            {criticalCount}
+                        </Badge>
+                    )}
+                    {warningCount > 0 && (
+                        <Badge variant="default" className="text-xs">
+                            {warningCount}
+                        </Badge>
+                    )}
+                    <Badge variant="secondary" className="text-xs">
+                        {faults.length} total
+                    </Badge>
+                </div>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pl-6 space-y-2 mt-2">
+                {faults.map((fault) => (
+                    <FaultRow
+                        key={fault.code}
+                        fault={fault}
+                        onClear={onClear}
+                        isClearing={clearingCodes.has(fault.code)}
+                    />
+                ))}
+            </CollapsibleContent>
+        </Collapsible>
+    );
+}
+
+/**
+ * Loading skeleton for dashboard
+ */
+function DashboardSkeleton() {
+    return (
+        <div className="space-y-4">
+            <div className="flex items-center gap-4">
+                <Skeleton className="h-10 w-32" />
+                <Skeleton className="h-10 w-32" />
+                <Skeleton className="h-10 w-24" />
+            </div>
+            <div className="space-y-3">
+                {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="p-4 rounded-lg border space-y-3">
+                        <div className="flex items-center gap-2">
+                            <Skeleton className="h-4 w-4" />
+                            <Skeleton className="h-5 w-32" />
+                            <Skeleton className="h-5 w-16" />
+                        </div>
+                        <Skeleton className="h-4 w-full" />
+                        <Skeleton className="h-3 w-48" />
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+/**
+ * Faults Dashboard - displays all faults across the system
+ *
+ * Features:
+ * - Real-time updates via polling (SSE support planned)
+ * - Filtering by severity and status
+ * - Grouping by entity
+ * - Clear fault actions
+ */
+export function FaultsDashboard() {
+    const [faults, setFaults] = useState<Fault[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [autoRefresh, setAutoRefresh] = useState(true);
+    const [clearingCodes, setClearingCodes] = useState<Set<string>>(new Set());
+    const [error, setError] = useState<string | null>(null);
+
+    // Filters
+    const [severityFilters, setSeverityFilters] = useState<Set<FaultSeverity>>(
+        new Set(['critical', 'error', 'warning', 'info'])
+    );
+    const [statusFilters, setStatusFilters] = useState<Set<FaultStatus>>(new Set(['active', 'pending']));
+    const [groupByEntity, setGroupByEntity] = useState(true);
+
+    const { client, isConnected } = useAppStore(
+        useShallow((state) => ({
+            client: state.client,
+            isConnected: state.isConnected,
+        }))
+    );
+
+    // Load faults
+    const loadFaults = useCallback(
+        async (showRefreshIndicator = false) => {
+            if (!client || !isConnected) return;
+
+            if (showRefreshIndicator) {
+                setIsRefreshing(true);
+            }
+            setError(null);
+
+            try {
+                const response = await client.listAllFaults();
+                setFaults(response.items || []);
+            } catch (err) {
+                setError(err instanceof Error ? err.message : 'Failed to load faults');
+            } finally {
+                setIsLoading(false);
+                setIsRefreshing(false);
+            }
+        },
+        [client, isConnected]
+    );
+
+    // Initial load
+    useEffect(() => {
+        loadFaults();
+    }, [loadFaults]);
+
+    // Auto-refresh polling
+    useEffect(() => {
+        if (!autoRefresh || !isConnected) return;
+
+        const interval = setInterval(() => {
+            loadFaults(false);
+        }, DEFAULT_POLL_INTERVAL);
+
+        return () => clearInterval(interval);
+    }, [autoRefresh, isConnected, loadFaults]);
+
+    // Clear fault handler
+    const handleClear = useCallback(
+        async (code: string) => {
+            if (!client) return;
+
+            setClearingCodes((prev) => new Set([...prev, code]));
+
+            try {
+                // Find the fault to get entity info
+                const fault = faults.find((f) => f.code === code);
+                if (fault) {
+                    // Note: This assumes faults are from components. May need adjustment.
+                    await client.clearFault('components', fault.entity_id, code);
+                }
+                // Reload faults after clearing
+                await loadFaults(true);
+            } catch {
+                // Error handled by toast in store
+            } finally {
+                setClearingCodes((prev) => {
+                    const next = new Set(prev);
+                    next.delete(code);
+                    return next;
+                });
+            }
+        },
+        [client, faults, loadFaults]
+    );
+
+    // Filter faults
+    const filteredFaults = useMemo(() => {
+        return faults.filter((f) => severityFilters.has(f.severity) && statusFilters.has(f.status));
+    }, [faults, severityFilters, statusFilters]);
+
+    // Group faults by entity
+    const groupedFaults = useMemo(() => {
+        const groups = new Map<string, { entityType: string; faults: Fault[] }>();
+
+        for (const fault of filteredFaults) {
+            const key = fault.entity_id;
+            if (!groups.has(key)) {
+                groups.set(key, { entityType: fault.entity_type, faults: [] });
+            }
+            groups.get(key)!.faults.push(fault);
+        }
+
+        // Sort groups by number of critical/error faults
+        return Array.from(groups.entries()).sort((a, b) => {
+            const aCritical = a[1].faults.filter((f) => f.severity === 'critical' || f.severity === 'error').length;
+            const bCritical = b[1].faults.filter((f) => f.severity === 'critical' || f.severity === 'error').length;
+            return bCritical - aCritical;
+        });
+    }, [filteredFaults]);
+
+    // Count by severity
+    const counts = useMemo(() => {
+        return {
+            critical: faults.filter((f) => f.severity === 'critical').length,
+            error: faults.filter((f) => f.severity === 'error').length,
+            warning: faults.filter((f) => f.severity === 'warning').length,
+            info: faults.filter((f) => f.severity === 'info').length,
+            total: faults.length,
+        };
+    }, [faults]);
+
+    // Toggle severity filter
+    const toggleSeverity = (severity: FaultSeverity) => {
+        setSeverityFilters((prev) => {
+            const next = new Set(prev);
+            if (next.has(severity)) {
+                next.delete(severity);
+            } else {
+                next.add(severity);
+            }
+            return next;
+        });
+    };
+
+    // Toggle status filter
+    const toggleStatus = (status: FaultStatus) => {
+        setStatusFilters((prev) => {
+            const next = new Set(prev);
+            if (next.has(status)) {
+                next.delete(status);
+            } else {
+                next.add(status);
+            }
+            return next;
+        });
+    };
+
+    if (!isConnected) {
+        return (
+            <Card>
+                <CardContent className="pt-6">
+                    <div className="text-center text-muted-foreground">
+                        <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm">Connect to a server to view faults.</p>
+                    </div>
+                </CardContent>
+            </Card>
+        );
+    }
+
+    if (isLoading) {
+        return (
+            <div className="space-y-6">
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <AlertTriangle className="w-5 h-5" />
+                            Faults Dashboard
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <DashboardSkeleton />
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-6">
+            {/* Header Card */}
+            <Card>
+                <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <CardTitle className="flex items-center gap-2">
+                                <AlertTriangle className="w-5 h-5 text-muted-foreground" />
+                                Faults Dashboard
+                            </CardTitle>
+                            <CardDescription>
+                                {counts.total === 0
+                                    ? 'No faults detected'
+                                    : `${counts.total} fault${counts.total !== 1 ? 's' : ''} detected`}
+                            </CardDescription>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {/* Auto-refresh toggle */}
+                            <div className="flex items-center gap-2 text-sm">
+                                <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} id="auto-refresh" />
+                                <label htmlFor="auto-refresh" className="text-muted-foreground cursor-pointer">
+                                    Auto-refresh
+                                </label>
+                            </div>
+                            {/* Manual refresh */}
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => loadFaults(true)}
+                                disabled={isRefreshing}
+                            >
+                                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                            </Button>
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    {/* Summary badges */}
+                    <div className="flex flex-wrap gap-2 mb-4">
+                        {counts.critical > 0 && (
+                            <Badge variant="destructive">
+                                <AlertOctagon className="w-3 h-3 mr-1" />
+                                {counts.critical} Critical
+                            </Badge>
+                        )}
+                        {counts.error > 0 && (
+                            <Badge variant="destructive">
+                                <AlertCircle className="w-3 h-3 mr-1" />
+                                {counts.error} Error
+                            </Badge>
+                        )}
+                        {counts.warning > 0 && (
+                            <Badge variant="default">
+                                <AlertTriangle className="w-3 h-3 mr-1" />
+                                {counts.warning} Warning
+                            </Badge>
+                        )}
+                        {counts.info > 0 && (
+                            <Badge variant="secondary">
+                                <Info className="w-3 h-3 mr-1" />
+                                {counts.info} Info
+                            </Badge>
+                        )}
+                        {counts.total === 0 && (
+                            <Badge variant="outline" className="text-green-600 border-green-300">
+                                <CheckCircle className="w-3 h-3 mr-1" />
+                                All Clear
+                            </Badge>
+                        )}
+                    </div>
+
+                    {/* Filters */}
+                    <div className="flex items-center gap-2">
+                        {/* Severity filter */}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="sm">
+                                    <Filter className="w-4 h-4 mr-2" />
+                                    Severity
+                                    <ChevronDown className="w-4 h-4 ml-2" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent>
+                                <DropdownMenuLabel>Filter by Severity</DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuCheckboxItem
+                                    checked={severityFilters.has('critical')}
+                                    onCheckedChange={() => toggleSeverity('critical')}
+                                >
+                                    <AlertOctagon className="w-4 h-4 mr-2 text-red-500" />
+                                    Critical
+                                </DropdownMenuCheckboxItem>
+                                <DropdownMenuCheckboxItem
+                                    checked={severityFilters.has('error')}
+                                    onCheckedChange={() => toggleSeverity('error')}
+                                >
+                                    <AlertCircle className="w-4 h-4 mr-2 text-orange-500" />
+                                    Error
+                                </DropdownMenuCheckboxItem>
+                                <DropdownMenuCheckboxItem
+                                    checked={severityFilters.has('warning')}
+                                    onCheckedChange={() => toggleSeverity('warning')}
+                                >
+                                    <AlertTriangle className="w-4 h-4 mr-2 text-yellow-500" />
+                                    Warning
+                                </DropdownMenuCheckboxItem>
+                                <DropdownMenuCheckboxItem
+                                    checked={severityFilters.has('info')}
+                                    onCheckedChange={() => toggleSeverity('info')}
+                                >
+                                    <Info className="w-4 h-4 mr-2 text-blue-500" />
+                                    Info
+                                </DropdownMenuCheckboxItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        {/* Status filter */}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="sm">
+                                    <Filter className="w-4 h-4 mr-2" />
+                                    Status
+                                    <ChevronDown className="w-4 h-4 ml-2" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent>
+                                <DropdownMenuLabel>Filter by Status</DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuCheckboxItem
+                                    checked={statusFilters.has('active')}
+                                    onCheckedChange={() => toggleStatus('active')}
+                                >
+                                    Active
+                                </DropdownMenuCheckboxItem>
+                                <DropdownMenuCheckboxItem
+                                    checked={statusFilters.has('pending')}
+                                    onCheckedChange={() => toggleStatus('pending')}
+                                >
+                                    Pending
+                                </DropdownMenuCheckboxItem>
+                                <DropdownMenuCheckboxItem
+                                    checked={statusFilters.has('cleared')}
+                                    onCheckedChange={() => toggleStatus('cleared')}
+                                >
+                                    Cleared
+                                </DropdownMenuCheckboxItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        {/* Group by toggle */}
+                        <div className="flex items-center gap-2 ml-auto">
+                            <Switch checked={groupByEntity} onCheckedChange={setGroupByEntity} id="group-by" />
+                            <label htmlFor="group-by" className="text-sm text-muted-foreground cursor-pointer">
+                                Group by entity
+                            </label>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Faults List */}
+            {error ? (
+                <Card>
+                    <CardContent className="pt-6">
+                        <div className="text-center text-destructive">
+                            <AlertCircle className="w-8 h-8 mx-auto mb-2" />
+                            <p className="text-sm">{error}</p>
+                            <Button variant="outline" size="sm" className="mt-2" onClick={() => loadFaults(true)}>
+                                Retry
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+            ) : filteredFaults.length === 0 ? (
+                <Card>
+                    <CardContent className="pt-6">
+                        <div className="flex flex-col items-center justify-center text-muted-foreground py-8">
+                            <CheckCircle className="w-12 h-12 mb-2 text-green-500" />
+                            <p className="font-medium">No faults to display</p>
+                            <p className="text-sm">
+                                {faults.length > 0
+                                    ? 'Adjust filters to see more faults'
+                                    : 'System is operating normally'}
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
+            ) : groupByEntity ? (
+                <Card>
+                    <CardContent className="pt-4 space-y-4">
+                        {groupedFaults.map(([entityId, { entityType, faults: entityFaults }]) => (
+                            <FaultGroup
+                                key={entityId}
+                                entityId={entityId}
+                                entityType={entityType}
+                                faults={entityFaults}
+                                onClear={handleClear}
+                                clearingCodes={clearingCodes}
+                            />
+                        ))}
+                    </CardContent>
+                </Card>
+            ) : (
+                <Card>
+                    <CardContent className="pt-4 space-y-2">
+                        {filteredFaults.map((fault) => (
+                            <FaultRow
+                                key={fault.code}
+                                fault={fault}
+                                onClear={handleClear}
+                                isClearing={clearingCodes.has(fault.code)}
+                            />
+                        ))}
+                    </CardContent>
+                </Card>
+            )}
+        </div>
+    );
+}
+
+/**
+ * Faults count badge for sidebar
+ */
+export function FaultsCountBadge() {
+    const [count, setCount] = useState(0);
+
+    const { client, isConnected } = useAppStore(
+        useShallow((state) => ({
+            client: state.client,
+            isConnected: state.isConnected,
+        }))
+    );
+
+    useEffect(() => {
+        const loadCount = async () => {
+            if (!client || !isConnected) {
+                setCount(0);
+                return;
+            }
+
+            try {
+                const response = await client.listAllFaults();
+                const activeCount = (response.items || []).filter(
+                    (f) => f.status === 'active' && (f.severity === 'critical' || f.severity === 'error')
+                ).length;
+                setCount(activeCount);
+            } catch {
+                setCount(0);
+            }
+        };
+
+        loadCount();
+        const interval = setInterval(loadCount, DEFAULT_POLL_INTERVAL);
+        return () => clearInterval(interval);
+    }, [client, isConnected]);
+
+    if (count === 0) return null;
+
+    return (
+        <Badge variant="destructive" className="text-xs ml-auto">
+            {count}
+        </Badge>
+    );
+}

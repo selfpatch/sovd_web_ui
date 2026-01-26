@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useShallow } from 'zustand/shallow';
 import {
     Copy,
@@ -30,6 +30,7 @@ import { AreasPanel } from '@/components/AreasPanel';
 import { AppsPanel } from '@/components/AppsPanel';
 import { FunctionsPanel } from '@/components/FunctionsPanel';
 import { ServerInfoPanel } from '@/components/ServerInfoPanel';
+import { FaultsDashboard } from '@/components/FaultsDashboard';
 import { useAppStore, type AppState } from '@/lib/store';
 import type { ComponentTopic, Parameter } from '@/lib/types';
 
@@ -326,9 +327,11 @@ function VirtualFolderContent({
 
 interface EntityDetailPanelProps {
     onConnectClick: () => void;
+    viewMode?: 'entity' | 'faults-dashboard';
+    onEntitySelect?: () => void;
 }
 
-export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
+export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntitySelect }: EntityDetailPanelProps) {
     const [activeTab, setActiveTab] = useState<ComponentTab>('data');
 
     const {
@@ -353,6 +356,13 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
         }))
     );
 
+    // Notify parent when entity is selected
+    useEffect(() => {
+        if (selectedPath && onEntitySelect) {
+            onEntitySelect();
+        }
+    }, [selectedPath, onEntitySelect]);
+
     const handleCopyEntity = async () => {
         if (selectedEntity) {
             await navigator.clipboard.writeText(JSON.stringify(selectedEntity, null, 2));
@@ -364,6 +374,17 @@ export function EntityDetailPanel({ onConnectClick }: EntityDetailPanelProps) {
         return (
             <main className="flex-1 flex items-center justify-center bg-background">
                 <EmptyState type="no-connection" onAction={onConnectClick} />
+            </main>
+        );
+    }
+
+    // Faults Dashboard view
+    if (viewMode === 'faults-dashboard' && !selectedPath) {
+        return (
+            <main className="flex-1 overflow-y-auto p-6 bg-background">
+                <div className="max-w-4xl mx-auto">
+                    <FaultsDashboard />
+                </div>
             </main>
         );
     }
