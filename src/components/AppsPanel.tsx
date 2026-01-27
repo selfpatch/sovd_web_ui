@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/lib/store';
 import { ConfigurationPanel } from '@/components/ConfigurationPanel';
+import { FaultsPanel } from '@/components/FaultsPanel';
 import type { ComponentTopic, Operation, Fault } from '@/lib/types';
 
 type AppTab = 'overview' | 'data' | 'operations' | 'configurations' | 'faults';
@@ -364,57 +365,7 @@ export function AppsPanel({ appId, appName, fqn, nodeName, namespace, componentI
 
             {activeTab === 'configurations' && <ConfigurationPanel componentId={appId} entityType="apps" />}
 
-            {activeTab === 'faults' && (
-                <Card>
-                    <CardHeader className="pb-3">
-                        <CardTitle className="text-base flex items-center gap-2">
-                            <AlertTriangle
-                                className={`w-4 h-4 ${activeFaults.length > 0 ? 'text-red-500' : 'text-muted-foreground'}`}
-                            />
-                            Faults
-                        </CardTitle>
-                        <CardDescription>
-                            {activeFaults.length} active, {faults.length - activeFaults.length} cleared
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        {faults.length === 0 ? (
-                            <div className="text-center text-muted-foreground py-4">
-                                <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                                <p className="text-sm">No faults detected for this app.</p>
-                            </div>
-                        ) : (
-                            <div className="space-y-2">
-                                {faults.map((fault) => (
-                                    <div
-                                        key={fault.code}
-                                        className={`flex items-center gap-3 p-2 rounded-lg border ${
-                                            fault.status === 'active'
-                                                ? 'border-red-300 bg-red-50 dark:bg-red-900/10'
-                                                : 'border-muted'
-                                        }`}
-                                    >
-                                        <Badge
-                                            variant={
-                                                fault.severity === 'critical' || fault.severity === 'error'
-                                                    ? 'destructive'
-                                                    : 'secondary'
-                                            }
-                                        >
-                                            {fault.severity}
-                                        </Badge>
-                                        <div className="flex-1 min-w-0">
-                                            <span className="font-mono text-sm">{fault.code}</span>
-                                            <p className="text-xs text-muted-foreground truncate">{fault.message}</p>
-                                        </div>
-                                        <Badge variant="outline">{fault.status}</Badge>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            )}
+            {activeTab === 'faults' && <FaultsPanel componentId={appId} entityType="apps" />}
 
             {isLoading && <div className="text-center text-muted-foreground py-4">Loading app resources...</div>}
         </div>
