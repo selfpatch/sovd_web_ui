@@ -34,7 +34,7 @@ import { FunctionsPanel } from '@/components/FunctionsPanel';
 import { ServerInfoPanel } from '@/components/ServerInfoPanel';
 import { FaultsDashboard } from '@/components/FaultsDashboard';
 import { useAppStore, type AppState } from '@/lib/store';
-import type { ComponentTopic, Parameter, VersionInfo } from '@/lib/types';
+import type { ComponentTopic, Parameter } from '@/lib/types';
 
 type ComponentTab = 'data' | 'operations' | 'configurations' | 'faults';
 
@@ -53,92 +53,23 @@ const COMPONENT_TABS: TabConfig[] = [
 ];
 
 /**
- * Server Panel - displays SOVD server version information
+ * Get icon for entity type to display in breadcrumbs
  */
-interface ServerPanelProps {
-    serverName: string;
-    versionInfo?: VersionInfo;
-    serverUrl?: string;
-}
-
-function ServerPanel({ serverName, versionInfo, serverUrl }: ServerPanelProps) {
-    const sovdInfo = versionInfo?.sovd_info?.[0];
-    const vendorInfo = sovdInfo?.vendor_info;
-
-    return (
-        <div className="space-y-6">
-            {/* Server Header */}
-            <Card>
-                <CardHeader>
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-primary/10">
-                            <Server className="w-5 h-5 text-primary" />
-                        </div>
-                        <div>
-                            <CardTitle className="text-lg">{serverName}</CardTitle>
-                            <CardDescription className="flex items-center gap-2 flex-wrap">
-                                <Badge variant="outline" className="text-primary border-primary/30">
-                                    server
-                                </Badge>
-                                {serverUrl && (
-                                    <>
-                                        <span className="text-muted-foreground">•</span>
-                                        <span className="font-mono text-xs truncate max-w-[200px]">{serverUrl}</span>
-                                    </>
-                                )}
-                            </CardDescription>
-                        </div>
-                    </div>
-                </CardHeader>
-                <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {/* SOVD Version */}
-                        <div className="p-3 rounded-lg bg-muted/50">
-                            <div className="text-sm text-muted-foreground mb-1">SOVD Version</div>
-                            <p className="font-mono text-sm font-medium">{sovdInfo?.version || 'Unknown'}</p>
-                        </div>
-
-                        {/* Vendor Name */}
-                        {vendorInfo?.name && (
-                            <div className="p-3 rounded-lg bg-muted/50">
-                                <div className="text-sm text-muted-foreground mb-1">Implementation</div>
-                                <p className="font-mono text-sm font-medium">{vendorInfo.name}</p>
-                            </div>
-                        )}
-
-                        {/* Vendor Version */}
-                        {vendorInfo?.version && (
-                            <div className="p-3 rounded-lg bg-muted/50">
-                                <div className="text-sm text-muted-foreground mb-1">Version</div>
-                                <p className="font-mono text-sm font-medium">{vendorInfo.version}</p>
-                            </div>
-                        )}
-
-                        {/* Base URI */}
-                        {sovdInfo?.base_uri && (
-                            <div className="p-3 rounded-lg bg-muted/50">
-                                <div className="text-sm text-muted-foreground mb-1">Base URI</div>
-                                <p className="font-mono text-sm">{sovdInfo.base_uri}</p>
-                            </div>
-                        )}
-                    </div>
-                </CardContent>
-            </Card>
-
-            {/* Areas info */}
-            <Card>
-                <CardContent className="pt-6">
-                    <div className="text-center text-muted-foreground">
-                        <Layers className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                        <p className="text-sm">Expand the server node in the tree to see areas.</p>
-                        <p className="text-xs mt-1">
-                            Areas contain components and apps that provide data, operations, and configurations.
-                        </p>
-                    </div>
-                </CardContent>
-            </Card>
-        </div>
-    );
+function getBreadcrumbIcon(type: string) {
+    switch (type) {
+        case 'server':
+            return <Server className="w-3 h-3" />;
+        case 'area':
+            return <Layers className="w-3 h-3" />;
+        case 'component':
+            return <Box className="w-3 h-3" />;
+        case 'app':
+            return <Cpu className="w-3 h-3" />;
+        case 'function':
+            return <GitBranch className="w-3 h-3" />;
+        default:
+            return null;
+    }
 }
 
 /**
@@ -591,11 +522,28 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
             }
         };
 
-        // Build breadcrumb from path
-        const breadcrumbs = pathParts.map((part, index) => ({
-            label: part,
-            path: '/' + pathParts.slice(0, index + 1).join('/'),
-        }));
+        // Build breadcrumb from path with type inference
+        const breadcrumbs = pathParts.map((part, index) => {
+            const breadcrumbPath = '/' + pathParts.slice(0, index + 1).join('/');
+            // Infer type from path position: server -> area -> component -> app/folder
+            let type: string;
+            if (part === 'server') {
+                type = 'server';
+            } else if (index === 1) {
+                type = 'area';
+            } else if (index === 2) {
+                type = 'component';
+            } else if (['data', 'operations', 'configurations', 'faults', 'resources'].includes(part)) {
+                type = 'folder';
+            } else {
+                type = 'app';
+            }
+            return {
+                label: part,
+                path: breadcrumbPath,
+                type,
+            };
+        });
 
         return (
             <main className="flex-1 overflow-y-auto p-6 bg-background">
@@ -604,7 +552,7 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
                     {breadcrumbs.length > 0 && (
                         <nav className="flex items-center gap-1 text-sm text-muted-foreground overflow-x-auto">
                             <button
-                                onClick={() => selectEntity('/')}
+                                onClick={() => selectEntity('/server')}
                                 className="flex items-center gap-1 hover:text-primary transition-colors whitespace-nowrap"
                             >
                                 <Home className="w-4 h-4" />
@@ -614,10 +562,11 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
                                     <ChevronRight className="w-4 h-4 text-muted-foreground/50" />
                                     <button
                                         onClick={() => selectEntity(crumb.path)}
-                                        className={`hover:text-primary transition-colors whitespace-nowrap ${
+                                        className={`flex items-center gap-1 hover:text-primary transition-colors whitespace-nowrap ${
                                             index === breadcrumbs.length - 1 ? 'text-foreground font-medium' : ''
                                         }`}
                                     >
+                                        {getBreadcrumbIcon(crumb.type)}
                                         {crumb.label}
                                     </button>
                                 </div>
@@ -626,13 +575,7 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
                     )}
 
                     {/* Server Entity View */}
-                    {isServer && !hasError && (
-                        <ServerPanel
-                            serverName={selectedEntity.name}
-                            versionInfo={selectedEntity.versionInfo as VersionInfo | undefined}
-                            serverUrl={selectedEntity.serverUrl as string | undefined}
-                        />
-                    )}
+                    {isServer && !hasError && <ServerInfoPanel />}
 
                     {/* Area Entity View */}
                     {isArea && !hasError && (
@@ -782,13 +725,17 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
                             // e.g., /root/route_server/resources/data -> /root/route_server
                             const folderPathParts = selectedPath.split('/');
                             // Remove folder names (e.g., data/operations/configurations/faults and resources)
+                            // Use safety counter to prevent infinite loops
+                            const folderNames = ['data', 'operations', 'configurations', 'faults', 'resources'];
+                            let safetyCounter = 0;
+                            const maxIterations = 10;
                             while (
                                 folderPathParts.length > 0 &&
-                                ['data', 'operations', 'configurations', 'faults', 'resources'].includes(
-                                    folderPathParts[folderPathParts.length - 1] || ''
-                                )
+                                folderNames.includes(folderPathParts[folderPathParts.length - 1] || '') &&
+                                safetyCounter < maxIterations
                             ) {
                                 folderPathParts.pop();
+                                safetyCounter++;
                             }
                             const basePath = folderPathParts.join('/');
                             // Determine entity type from folder data

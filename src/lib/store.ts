@@ -129,9 +129,18 @@ function toTreeNode(entity: SovdEntity, parentPath: string = ''): EntityTreeNode
     const path = parentPath ? `${parentPath}/${entity.id}` : `/${entity.id}`;
     const entityType = entity.type.toLowerCase();
 
-    // Areas and components have children (loaded on expand)
-    // Apps are leaf nodes - their resources are shown in the detail panel
-    const hasChildren = entityType !== 'app';
+    // Prefer explicit metadata / existing children if available; fall back to type heuristic.
+    let hasChildren: boolean;
+    const entityAny = entity as unknown as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(entityAny, 'hasChildren') && typeof entityAny.hasChildren === 'boolean') {
+        hasChildren = entityAny.hasChildren as boolean;
+    } else if (Array.isArray(entityAny.children)) {
+        hasChildren = (entityAny.children as unknown[]).length > 0;
+    } else {
+        // Areas and components typically have children (loaded on expand)
+        // Apps are usually leaf nodes - their resources are shown in the detail panel
+        hasChildren = entityType !== 'app';
+    }
 
     return {
         ...entity,
@@ -282,7 +291,11 @@ export const useAppStore = create<AppState>()(
                 try {
                     // Fetch version info and areas in parallel
                     const [versionInfo, entities] = await Promise.all([
-                        client.getVersionInfo().catch(() => null),
+                        client.getVersionInfo().catch((error: unknown) => {
+                            const message = error instanceof Error ? error.message : 'Unknown error';
+                            toast.warn(`Failed to fetch server version info: ${message}`);
+                            return null as VersionInfo | null;
+                        }),
                         client.getEntities(),
                     ]);
 
@@ -353,7 +366,9 @@ export const useAppStore = create<AppState>()(
                         let children: EntityTreeNode[] = [];
 
                         // Map entityType to API collection name
-                        const apiEntityType = folderData.entityType === 'app' ? 'apps' : 'components';
+                        // Note: Areas don't have their own operations/configurations/faults - they belong to components
+                        const apiEntityType: 'apps' | 'components' =
+                            folderData.entityType === 'app' ? 'apps' : 'components';
 
                         if (folderData.folderType === 'data') {
                             // Load topics for data folder
