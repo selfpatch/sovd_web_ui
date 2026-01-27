@@ -42,7 +42,7 @@ interface EntityTreeNodeProps {
  * - Function: GitBranch (capability grouping)
  */
 function getEntityIcon(type: string, _data?: unknown, isExpanded?: boolean) {
-    switch (type.toLowerCase()) {
+    switch ((type || '').toLowerCase()) {
         // Entity types
         case 'area':
         case 'subarea':
@@ -221,7 +221,9 @@ export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
 
                 <Icon className={cn('w-4 h-4 shrink-0', iconColorClass)} />
 
-                <span className="text-sm truncate flex-1">{node.name}</span>
+                <span className="text-sm truncate flex-1">
+                    {typeof node.name === 'string' ? node.name : String(node.name || node.id || '')}
+                </span>
 
                 {/* Topic direction indicators */}
                 {topicData && (
@@ -251,7 +253,7 @@ export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
                         isSelected ? 'text-primary/70' : 'text-muted-foreground bg-muted/50'
                     )}
                 >
-                    {node.type}
+                    {typeof node.type === 'string' ? node.type : 'unknown'}
                 </span>
             </div>
 
