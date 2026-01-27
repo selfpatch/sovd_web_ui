@@ -13,11 +13,9 @@ import type {
     CreateExecutionRequest,
     CreateExecutionResponse,
     Fault,
-    VirtualFolderData,
     App,
     VersionInfo,
 } from './types';
-import { isVirtualFolderData } from './types';
 import { createSovdClient, type SovdApiClient } from './sovd-api';
 
 const STORAGE_KEY = 'sovd_web_ui_server_url';
@@ -343,160 +341,6 @@ export const useAppStore = create<AppState>()(
 
                 // Check if we already have this data in the tree
                 const node = findNode(rootEntities, path);
-
-                // Handle virtual folders (resources/, data/, operations/, configurations/, etc.)
-                if (node && isVirtualFolderData(node.data)) {
-                    const folderData = node.data as VirtualFolderData;
-
-                    // Resources folder - children are already defined, just expand
-                    if (folderData.folderType === 'resources') {
-                        // Resources folder has static children (data/operations/configurations/faults)
-                        // They are created in toTreeNode, nothing to load
-                        return;
-                    }
-
-                    // Skip if already has loaded children (for folders that need API calls)
-                    if (node.children && node.children.length > 0) {
-                        return;
-                    }
-
-                    set({ loadingPaths: [...loadingPaths, path] });
-
-                    try {
-                        let children: EntityTreeNode[] = [];
-
-                        // Map entityType to API collection name
-                        // Note: Areas don't have their own operations/configurations/faults - they belong to components
-                        const apiEntityType: 'apps' | 'components' =
-                            folderData.entityType === 'app' ? 'apps' : 'components';
-
-                        if (folderData.folderType === 'data') {
-                            // Load topics for data folder
-                            if (folderData.entityType === 'app') {
-                                const topics = await client.getAppData(folderData.entityId);
-                                children = topics.map((topic) => {
-                                    const uniqueId = topic.uniqueKey || topic.topic;
-                                    const cleanName = uniqueId.startsWith('/') ? uniqueId.slice(1) : uniqueId;
-                                    const encodedName = encodeURIComponent(cleanName);
-                                    return {
-                                        id: encodedName,
-                                        name: topic.topic,
-                                        type: 'topic',
-                                        href: `${path}/${encodedName}`,
-                                        path: `${path}/${encodedName}`,
-                                        hasChildren: false,
-                                        isLoading: false,
-                                        isExpanded: false,
-                                        data: {
-                                            ...topic,
-                                            isPublisher: topic.isPublisher ?? false,
-                                            isSubscriber: topic.isSubscriber ?? false,
-                                        },
-                                    };
-                                });
-                            } else {
-                                // For areas and components - use entity path without /resources/data and /server prefix
-                                const entityPath = path.replace('/resources/data', '').replace(/^\/server/, '');
-                                const topics = await client.getEntities(entityPath);
-                                children = topics.map((topic: SovdEntity & { data?: ComponentTopic }) => {
-                                    const cleanName = topic.name.startsWith('/') ? topic.name.slice(1) : topic.name;
-                                    const encodedName = encodeURIComponent(cleanName);
-                                    return {
-                                        id: encodedName,
-                                        name: topic.name,
-                                        type: 'topic',
-                                        href: `${path}/${encodedName}`,
-                                        path: `${path}/${encodedName}`,
-                                        hasChildren: false,
-                                        isLoading: false,
-                                        isExpanded: false,
-                                        data: topic.data || {
-                                            topic: topic.name,
-                                            isPublisher:
-                                                folderData.topicsInfo?.publishes?.includes(topic.name) ?? false,
-                                            isSubscriber:
-                                                folderData.topicsInfo?.subscribes?.includes(topic.name) ?? false,
-                                        },
-                                    };
-                                });
-                            }
-                        } else if (folderData.folderType === 'operations') {
-                            // Load operations for operations folder
-                            const ops = await client.listOperations(folderData.entityId, apiEntityType);
-                            children = ops.map((op) => ({
-                                id: op.name,
-                                name: op.name,
-                                type: op.kind === 'service' ? 'service' : 'action',
-                                href: `${path}/${op.name}`,
-                                path: `${path}/${op.name}`,
-                                hasChildren: false,
-                                isLoading: false,
-                                isExpanded: false,
-                                data: op,
-                            }));
-                        } else if (folderData.folderType === 'configurations') {
-                            // Load parameters for configurations folder
-                            const config = await client.listConfigurations(folderData.entityId, apiEntityType);
-                            children = config.parameters.map((param) => ({
-                                id: param.name,
-                                name: param.name,
-                                type: 'parameter',
-                                href: `${path}/${param.name}`,
-                                path: `${path}/${param.name}`,
-                                hasChildren: false,
-                                isLoading: false,
-                                isExpanded: false,
-                                data: param,
-                            }));
-                        } else if (folderData.folderType === 'faults') {
-                            // Load faults for this entity
-                            const faultsResponse = await client.listEntityFaults(apiEntityType, folderData.entityId);
-                            children = faultsResponse.items.map((fault) => ({
-                                id: fault.code,
-                                name: `${fault.code}: ${fault.message}`,
-                                type: 'fault',
-                                href: `${path}/${encodeURIComponent(fault.code)}`,
-                                path: `${path}/${encodeURIComponent(fault.code)}`,
-                                hasChildren: false,
-                                isLoading: false,
-                                isExpanded: false,
-                                data: fault,
-                            }));
-                        }
-                        // Note: subareas and subcomponents are no longer loaded via folder
-                        // They are loaded as direct children of area/component entities
-
-                        const updatedTree = updateNodeInTree(rootEntities, path, (n) => ({
-                            ...n,
-                            children,
-                            hasChildren: children.length > 0,
-                            isLoading: false,
-                        }));
-
-                        set({
-                            rootEntities: updatedTree,
-                            loadingPaths: get().loadingPaths.filter((p) => p !== path),
-                        });
-                    } catch (error) {
-                        const message = error instanceof Error ? error.message : 'Unknown error';
-                        // Don't show error for empty results - some entities may not have resources
-                        if (!message.includes('not found') && !message.includes('404')) {
-                            toast.error(`Failed to load ${folderData.folderType}: ${message}`);
-                        }
-                        // Still update tree to show empty folder
-                        const updatedTree = updateNodeInTree(rootEntities, path, (n) => ({
-                            ...n,
-                            children: [],
-                            hasChildren: false,
-                            isLoading: false,
-                        }));
-                        set({
-                            rootEntities: updatedTree,
-                            loadingPaths: get().loadingPaths.filter((p) => p !== path),
-                        });
-                    }
-                    return;
-                }
 
                 // Regular node loading for entities (server, areas, subareas, components, subcomponents)
                 // These load their direct children
@@ -846,26 +690,6 @@ export const useAppStore = create<AppState>()(
                             href: node.href,
                             data: fault,
                             entityId,
-                        },
-                    });
-                    return;
-                }
-
-                // Handle virtual folder selection - show appropriate panel
-                if (node && isVirtualFolderData(node.data)) {
-                    const folderData = node.data as VirtualFolderData;
-                    set({
-                        selectedPath: path,
-                        isLoadingDetails: false,
-                        selectedEntity: {
-                            id: node.id,
-                            name: `${folderData.entityId} / ${node.name}`,
-                            type: 'folder',
-                            href: node.href,
-                            // Pass folder info so detail panel knows what to show
-                            folderType: folderData.folderType,
-                            entityId: folderData.entityId,
-                            entityType: folderData.entityType,
                         },
                     });
                     return;
