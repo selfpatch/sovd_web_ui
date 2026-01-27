@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useShallow } from 'zustand/shallow';
-import { Layers, Box, ChevronRight, MapPin } from 'lucide-react';
+import { Layers, Box, ChevronRight, MapPin, Database } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useAppStore } from '@/lib/store';
+import { EntityResourceTabs } from '@/components/EntityResourceTabs';
 import type { EntityTreeNode } from '@/lib/types';
 
-type AreaTab = 'overview' | 'components';
+type AreaTab = 'overview' | 'components' | 'resources';
 
 interface TabConfig {
     id: AreaTab;
@@ -17,6 +18,7 @@ interface TabConfig {
 const AREA_TABS: TabConfig[] = [
     { id: 'overview', label: 'Overview', icon: Layers },
     { id: 'components', label: 'Components', icon: Box },
+    { id: 'resources', label: 'Resources', icon: Database },
 ];
 
 interface AreasPanelProps {
@@ -162,14 +164,14 @@ export function AreasPanel({ areaId, areaName, path }: AreasPanelProps) {
                                     <div className="text-xs text-muted-foreground">Subareas</div>
                                 </div>
                             )}
-                        </div>
-
-                        {/* Tip about resources */}
-                        <div className="mt-4 p-3 rounded-lg border border-dashed">
-                            <p className="text-sm text-muted-foreground">
-                                <strong>Tip:</strong> Areas contain components. To view data, operations,
-                                configurations, or faults, select a component or app from this area.
-                            </p>
+                            <button
+                                onClick={() => setActiveTab('resources')}
+                                className="p-3 rounded-lg bg-muted/50 hover:bg-accent/50 transition-colors text-left"
+                            >
+                                <Database className="w-4 h-4 text-blue-500 mb-1" />
+                                <div className="text-lg font-semibold">→</div>
+                                <div className="text-xs text-muted-foreground">Resources</div>
+                            </button>
                         </div>
                     </CardContent>
                 </Card>
@@ -221,6 +223,8 @@ export function AreasPanel({ areaId, areaName, path }: AreasPanelProps) {
                     </CardContent>
                 </Card>
             )}
+
+            {activeTab === 'resources' && <EntityResourceTabs entityId={areaId} entityType="areas" />}
         </div>
     );
 }

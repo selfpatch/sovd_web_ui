@@ -1,10 +1,21 @@
 import { useState, useEffect } from 'react';
 import { useShallow } from 'zustand/shallow';
-import { GitBranch, Cpu, Database, Zap, ChevronRight, Users, Info } from 'lucide-react';
+import {
+    GitBranch,
+    Cpu,
+    Database,
+    Zap,
+    ChevronRight,
+    Users,
+    Info,
+    Settings,
+    AlertTriangle,
+    Loader2,
+} from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useAppStore } from '@/lib/store';
-import type { ComponentTopic, Operation } from '@/lib/types';
+import type { ComponentTopic, Operation, Parameter, Fault } from '@/lib/types';
 
 /** Host app object returned from /functions/{id}/hosts */
 interface FunctionHost {
@@ -13,7 +24,7 @@ interface FunctionHost {
     href: string;
 }
 
-type FunctionTab = 'overview' | 'hosts' | 'data' | 'operations';
+type FunctionTab = 'overview' | 'hosts' | 'data' | 'operations' | 'configurations' | 'faults';
 
 interface TabConfig {
     id: FunctionTab;
@@ -26,6 +37,8 @@ const FUNCTION_TABS: TabConfig[] = [
     { id: 'hosts', label: 'Hosts', icon: Cpu },
     { id: 'data', label: 'Data', icon: Database },
     { id: 'operations', label: 'Operations', icon: Zap },
+    { id: 'configurations', label: 'Config', icon: Settings },
+    { id: 'faults', label: 'Faults', icon: AlertTriangle },
 ];
 
 interface FunctionsPanelProps {
@@ -49,6 +62,8 @@ export function FunctionsPanel({ functionId, functionName, description, path, on
     const [hosts, setHosts] = useState<FunctionHost[]>([]);
     const [topics, setTopics] = useState<ComponentTopic[]>([]);
     const [operations, setOperations] = useState<Operation[]>([]);
+    const [configurations, setConfigurations] = useState<Parameter[]>([]);
+    const [faults, setFaults] = useState<Fault[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
     const { client, selectEntity } = useAppStore(
@@ -65,9 +80,8 @@ export function FunctionsPanel({ functionId, functionName, description, path, on
             setIsLoading(true);
 
             try {
-                // Load hosts, data, and operations in parallel
-                // Use optional chaining to handle missing API methods gracefully
-                const [hostsData, topicsData, opsData] = await Promise.all([
+                // Load hosts, data, operations, configurations, and faults in parallel
+                const [hostsData, topicsData, opsData, configData, faultsData] = await Promise.all([
                     client.getFunctionHosts
                         ? client.getFunctionHosts(functionId).catch(() => [] as FunctionHost[])
                         : Promise.resolve<FunctionHost[]>([]),
@@ -77,6 +91,8 @@ export function FunctionsPanel({ functionId, functionName, description, path, on
                     client.getFunctionOperations
                         ? client.getFunctionOperations(functionId).catch(() => [] as Operation[])
                         : Promise.resolve<Operation[]>([]),
+                    client.listConfigurations(functionId, 'functions').catch(() => ({ parameters: [] })),
+                    client.listEntityFaults('functions', functionId).catch(() => ({ items: [] })),
                 ]);
 
                 // Normalize hosts - API returns objects with {id, name, href}
@@ -91,6 +107,8 @@ export function FunctionsPanel({ functionId, functionName, description, path, on
                 setHosts(normalizedHosts);
                 setTopics(topicsData);
                 setOperations(opsData);
+                setConfigurations(configData.parameters || []);
+                setFaults(faultsData.items || []);
             } catch (error) {
                 console.error('Failed to load function data:', error);
             } finally {
@@ -145,6 +163,8 @@ export function FunctionsPanel({ functionId, functionName, description, path, on
                             if (tab.id === 'hosts') count = hosts.length;
                             if (tab.id === 'data') count = topics.length;
                             if (tab.id === 'operations') count = operations.length;
+                            if (tab.id === 'configurations') count = configurations.length;
+                            if (tab.id === 'faults') count = faults.length;
 
                             return (
                                 <button
@@ -159,7 +179,10 @@ export function FunctionsPanel({ functionId, functionName, description, path, on
                                     <TabIcon className="w-4 h-4" />
                                     {tab.label}
                                     {count > 0 && (
-                                        <Badge variant={isActive ? 'default' : 'secondary'} className="ml-1 h-5 px-1.5">
+                                        <Badge
+                                            variant={isActive ? 'default' : 'secondary'}
+                                            className={`ml-1 h-5 px-1.5 ${tab.id === 'faults' && count > 0 ? 'bg-red-500 text-white' : ''}`}
+                                        >
                                             {count}
                                         </Badge>
                                     )}
@@ -188,7 +211,7 @@ export function FunctionsPanel({ functionId, functionName, description, path, on
                         )}
 
                         {/* Resource Summary */}
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                             <button
                                 onClick={() => setActiveTab('hosts')}
                                 className="p-3 rounded-lg border hover:bg-accent/50 transition-colors text-left"
@@ -212,6 +235,24 @@ export function FunctionsPanel({ functionId, functionName, description, path, on
                                 <Zap className="w-4 h-4 text-amber-500 mb-1" />
                                 <div className="text-2xl font-semibold">{operations.length}</div>
                                 <div className="text-xs text-muted-foreground">Operations</div>
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('configurations')}
+                                className="p-3 rounded-lg border hover:bg-accent/50 transition-colors text-left"
+                            >
+                                <Settings className="w-4 h-4 text-violet-500 mb-1" />
+                                <div className="text-2xl font-semibold">{configurations.length}</div>
+                                <div className="text-xs text-muted-foreground">Configs</div>
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('faults')}
+                                className={`p-3 rounded-lg border hover:bg-accent/50 transition-colors text-left ${faults.length > 0 ? 'border-red-300 bg-red-50 dark:bg-red-950/30' : ''}`}
+                            >
+                                <AlertTriangle
+                                    className={`w-4 h-4 mb-1 ${faults.length > 0 ? 'text-red-500' : 'text-muted-foreground'}`}
+                                />
+                                <div className="text-2xl font-semibold">{faults.length}</div>
+                                <div className="text-xs text-muted-foreground">Faults</div>
                             </button>
                         </div>
 
@@ -350,7 +391,100 @@ export function FunctionsPanel({ functionId, functionName, description, path, on
                 </Card>
             )}
 
-            {isLoading && <div className="text-center text-muted-foreground py-4">Loading function resources...</div>}
+            {activeTab === 'configurations' && (
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-base flex items-center gap-2">
+                            <Settings className="w-4 h-4 text-violet-500" />
+                            Configurations
+                        </CardTitle>
+                        <CardDescription>Parameters from all host apps</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {configurations.length === 0 ? (
+                            <div className="text-center text-muted-foreground py-4">
+                                <Settings className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                                <p className="text-sm">No configurations available.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                {configurations.map((param) => (
+                                    <div
+                                        key={param.name}
+                                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50"
+                                    >
+                                        <Settings className="w-4 h-4 text-violet-500 shrink-0" />
+                                        <span className="font-mono text-sm truncate flex-1">{param.name}</span>
+                                        <Badge variant="outline" className="text-xs shrink-0">
+                                            {param.type}
+                                        </Badge>
+                                        <span className="font-mono text-xs text-muted-foreground truncate max-w-24">
+                                            {String(param.value)}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
+
+            {activeTab === 'faults' && (
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-base flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 text-red-500" />
+                            Faults
+                        </CardTitle>
+                        <CardDescription>Active faults from all host apps</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {faults.length === 0 ? (
+                            <div className="text-center text-muted-foreground py-4">
+                                <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                                <p className="text-sm">No active faults.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                {faults.map((fault) => (
+                                    <div
+                                        key={fault.code}
+                                        className="flex items-start gap-3 p-2.5 rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-900"
+                                    >
+                                        <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                                        <div className="min-w-0 flex-1">
+                                            <div className="font-medium text-sm">{fault.code}</div>
+                                            <div className="text-xs text-muted-foreground truncate">
+                                                {fault.message}
+                                            </div>
+                                        </div>
+                                        <Badge
+                                            variant="outline"
+                                            className={`text-xs shrink-0 ${
+                                                fault.severity === 'critical'
+                                                    ? 'border-red-500 text-red-600'
+                                                    : fault.severity === 'error'
+                                                      ? 'border-orange-500 text-orange-600'
+                                                      : 'border-yellow-500 text-yellow-600'
+                                            }`}
+                                        >
+                                            {fault.severity}
+                                        </Badge>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
+
+            {isLoading && (
+                <Card>
+                    <CardContent className="py-8 flex items-center justify-center">
+                        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                    </CardContent>
+                </Card>
+            )}
         </div>
     );
 }
