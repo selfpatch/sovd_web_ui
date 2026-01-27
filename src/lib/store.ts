@@ -15,10 +15,13 @@ import type {
     Fault,
     App,
     VersionInfo,
+    SovdFunction,
 } from './types';
 import { createSovdClient, type SovdApiClient } from './sovd-api';
 
 const STORAGE_KEY = 'sovd_web_ui_server_url';
+
+export type TreeViewMode = 'logical' | 'functional';
 
 export interface AppState {
     // Connection state
@@ -30,6 +33,7 @@ export interface AppState {
     client: SovdApiClient | null;
 
     // Entity tree state
+    treeViewMode: TreeViewMode;
     rootEntities: EntityTreeNode[];
     loadingPaths: string[];
     expandedPaths: string[];
@@ -60,6 +64,7 @@ export interface AppState {
     // Actions
     connect: (url: string, baseEndpoint?: string) => Promise<boolean>;
     disconnect: () => void;
+    setTreeViewMode: (mode: TreeViewMode) => Promise<void>;
     loadRootEntities: () => Promise<void>;
     loadChildren: (path: string) => Promise<void>;
     toggleExpanded: (path: string) => void;
@@ -199,6 +204,7 @@ export const useAppStore = create<AppState>()(
             connectionError: null,
             client: null,
 
+            treeViewMode: 'logical',
             rootEntities: [],
             loadingPaths: [],
             expandedPaths: [],
@@ -281,21 +287,26 @@ export const useAppStore = create<AppState>()(
                 });
             },
 
-            // Load root entities - creates a server node as root with areas as children
+            // Set tree view mode (logical vs functional) and reload entities
+            setTreeViewMode: async (mode: TreeViewMode) => {
+                set({ treeViewMode: mode, rootEntities: [], expandedPaths: [] });
+                await get().loadRootEntities();
+            },
+
+            // Load root entities - creates a server node as root
+            // In logical mode: Areas -> Components -> Apps
+            // In functional mode: Functions -> Apps (hosts)
             loadRootEntities: async () => {
-                const { client, serverUrl } = get();
+                const { client, serverUrl, treeViewMode } = get();
                 if (!client) return;
 
                 try {
-                    // Fetch version info and areas in parallel
-                    const [versionInfo, entities] = await Promise.all([
-                        client.getVersionInfo().catch((error: unknown) => {
-                            const message = error instanceof Error ? error.message : 'Unknown error';
-                            toast.warn(`Failed to fetch server version info: ${message}`);
-                            return null as VersionInfo | null;
-                        }),
-                        client.getEntities(),
-                    ]);
+                    // Fetch version info
+                    const versionInfo = await client.getVersionInfo().catch((error: unknown) => {
+                        const message = error instanceof Error ? error.message : 'Unknown error';
+                        toast.warn(`Failed to fetch server version info: ${message}`);
+                        return null as VersionInfo | null;
+                    });
 
                     // Extract server info from version-info response
                     const sovdInfo = versionInfo?.sovd_info?.[0];
@@ -303,22 +314,51 @@ export const useAppStore = create<AppState>()(
                     const serverVersion = sovdInfo?.vendor_info?.version || '';
                     const sovdVersion = sovdInfo?.version || '';
 
-                    // Create server root node with areas as children
+                    let children: EntityTreeNode[] = [];
+
+                    if (treeViewMode === 'functional') {
+                        // Functional view: Functions -> Apps (hosts)
+                        const functions = await client.listFunctions().catch(() => [] as SovdFunction[]);
+                        children = functions.map((fn: SovdFunction) => {
+                            const fnName = typeof fn.name === 'string' ? fn.name : fn.id || 'Unknown';
+                            const fnId = typeof fn.id === 'string' ? fn.id : String(fn.id);
+                            return {
+                                id: fnId,
+                                name: fnName,
+                                type: 'function',
+                                href: fn.href || '',
+                                path: `/server/${fnId}`,
+                                children: undefined,
+                                isLoading: false,
+                                isExpanded: false,
+                                // Functions always potentially have hosts - load on expand
+                                hasChildren: true,
+                                data: fn,
+                            };
+                        });
+                    } else {
+                        // Logical view: Areas -> Components -> Apps
+                        const entities = await client.getEntities();
+                        children = entities.map((e: SovdEntity) => toTreeNode(e, '/server'));
+                    }
+
+                    // Create server root node
                     const serverNode: EntityTreeNode = {
                         id: 'server',
                         name: serverName,
                         type: 'server',
                         href: serverUrl || '',
                         path: '/server',
-                        hasChildren: true,
+                        hasChildren: children.length > 0,
                         isLoading: false,
                         isExpanded: false,
-                        children: entities.map((e: SovdEntity) => toTreeNode(e, '/server')),
+                        children,
                         data: {
                             versionInfo,
                             serverVersion,
                             sovdVersion,
                             serverUrl,
+                            treeViewMode,
                         },
                     };
 
@@ -355,8 +395,9 @@ export const useAppStore = create<AppState>()(
                 // Check if this is a loadable entity type
                 const isAreaOrSubarea = nodeType === 'area' || nodeType === 'subarea';
                 const isComponentOrSubcomponent = nodeType === 'component' || nodeType === 'subcomponent';
+                const isFunction = nodeType === 'function';
 
-                if (node && (isAreaOrSubarea || isComponentOrSubcomponent)) {
+                if (node && (isAreaOrSubarea || isComponentOrSubcomponent || isFunction)) {
                     // Check if we already loaded children
                     if (node.children && node.children.length > 0) {
                         // Already loaded children, skip fetch
@@ -404,6 +445,26 @@ export const useAppStore = create<AppState>()(
                             );
 
                             loadedEntities = [...subcompNodes, ...appNodes];
+                        } else if (isFunction) {
+                            // Load hosts (apps) for this function
+                            const hosts = await client.getFunctionHosts(node.id).catch(() => []);
+
+                            // Hosts response contains objects with {id, name, href}
+                            loadedEntities = hosts.map((host: unknown) => {
+                                const hostObj = host as { id?: string; name?: string; href?: string };
+                                const hostId = hostObj.id || '';
+                                const hostName = hostObj.name || hostObj.id || '';
+                                return {
+                                    id: hostId,
+                                    name: hostName,
+                                    type: 'app',
+                                    href: hostObj.href || `${path}/${hostId}`,
+                                    path: `${path}/${hostId}`,
+                                    hasChildren: false,
+                                    isLoading: false,
+                                    isExpanded: false,
+                                };
+                            });
                         }
 
                         const updatedTree = updateNodeInTree(rootEntities, path, (n) => ({
@@ -644,6 +705,26 @@ export const useAppStore = create<AppState>()(
                             name: node.name,
                             type: node.type,
                             href: node.href,
+                        },
+                    });
+                    return;
+                }
+
+                // Handle Function entity selection - show function panel with hosts
+                if (node && node.type === 'function') {
+                    const newExpandedPaths = expandedPaths.includes(path) ? expandedPaths : [...expandedPaths, path];
+                    const functionData = node.data as SovdFunction | undefined;
+
+                    set({
+                        selectedPath: path,
+                        expandedPaths: newExpandedPaths,
+                        isLoadingDetails: false,
+                        selectedEntity: {
+                            id: node.id,
+                            name: node.name,
+                            type: 'function',
+                            href: node.href,
+                            description: functionData?.description,
                         },
                     });
                     return;

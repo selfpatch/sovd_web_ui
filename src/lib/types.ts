@@ -506,8 +506,8 @@ export interface AppCapabilities {
 export interface SovdFunction extends SovdEntity {
     /** Description of the function */
     description?: string;
-    /** IDs of apps that host this function */
-    hosts: string[];
+    /** IDs of apps that host this function (loaded from separate /hosts endpoint) */
+    hosts?: string[];
 }
 
 /**

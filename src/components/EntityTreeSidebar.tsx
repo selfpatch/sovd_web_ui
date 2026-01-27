@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useShallow } from 'zustand/shallow';
-import { Server, Settings, RefreshCw, Search, X, AlertTriangle } from 'lucide-react';
+import { Server, Settings, RefreshCw, Search, X, AlertTriangle, Layers, GitBranch } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { EntityTreeNode } from '@/components/EntityTreeNode';
@@ -8,7 +8,7 @@ import { EntityTreeSkeleton } from '@/components/EntityTreeSkeleton';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { EmptyState } from '@/components/EmptyState';
 import { FaultsCountBadge } from '@/components/FaultsDashboard';
-import { useAppStore } from '@/lib/store';
+import { useAppStore, type TreeViewMode } from '@/lib/store';
 import type { EntityTreeNode as EntityTreeNodeType } from '@/lib/types';
 
 interface EntityTreeSidebarProps {
@@ -45,15 +45,26 @@ export function EntityTreeSidebar({ onSettingsClick, onFaultsDashboardClick }: E
     const [searchQuery, setSearchQuery] = useState('');
     const [isRefreshing, setIsRefreshing] = useState(false);
 
-    const { isConnected, isConnecting, serverUrl, rootEntities, loadRootEntities } = useAppStore(
-        useShallow((state) => ({
-            isConnected: state.isConnected,
-            isConnecting: state.isConnecting,
-            serverUrl: state.serverUrl,
-            rootEntities: state.rootEntities,
-            loadRootEntities: state.loadRootEntities,
-        }))
-    );
+    const { isConnected, isConnecting, serverUrl, rootEntities, loadRootEntities, treeViewMode, setTreeViewMode } =
+        useAppStore(
+            useShallow((state) => ({
+                isConnected: state.isConnected,
+                isConnecting: state.isConnecting,
+                serverUrl: state.serverUrl,
+                rootEntities: state.rootEntities,
+                loadRootEntities: state.loadRootEntities,
+                treeViewMode: state.treeViewMode,
+                setTreeViewMode: state.setTreeViewMode,
+            }))
+        );
+
+    const handleViewModeChange = async (mode: TreeViewMode) => {
+        if (mode !== treeViewMode) {
+            setIsRefreshing(true);
+            await setTreeViewMode(mode);
+            setIsRefreshing(false);
+        }
+    };
 
     const filteredEntities = useMemo(() => {
         if (!searchQuery.trim()) {
@@ -120,6 +131,36 @@ export function EntityTreeSidebar({ onSettingsClick, onFaultsDashboardClick }: E
                     <div className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full bg-green-500" />
                         <span className="text-xs text-muted-foreground truncate">{serverUrl}</span>
+                    </div>
+                </div>
+            )}
+
+            {/* View mode toggle */}
+            {isConnected && (
+                <div className="px-3 py-2 border-b">
+                    <div className="flex rounded-md border bg-muted p-0.5">
+                        <Button
+                            variant={treeViewMode === 'logical' ? 'secondary' : 'ghost'}
+                            size="sm"
+                            className="flex-1 h-7 text-xs gap-1.5"
+                            onClick={() => handleViewModeChange('logical')}
+                            disabled={isRefreshing}
+                            title="Logical View: Areas → Components → Apps"
+                        >
+                            <Layers className="w-3.5 h-3.5" />
+                            Logical
+                        </Button>
+                        <Button
+                            variant={treeViewMode === 'functional' ? 'secondary' : 'ghost'}
+                            size="sm"
+                            className="flex-1 h-7 text-xs gap-1.5"
+                            onClick={() => handleViewModeChange('functional')}
+                            disabled={isRefreshing}
+                            title="Functional View: Functions → Apps"
+                        >
+                            <GitBranch className="w-3.5 h-3.5" />
+                            Functional
+                        </Button>
                     </div>
                 </div>
             )}

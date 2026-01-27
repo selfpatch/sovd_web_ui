@@ -1146,8 +1146,9 @@ export class SovdApiClient {
     /**
      * Get apps hosting a function
      * @param functionId Function identifier
+     * @returns Array of host objects (with id, name, href)
      */
-    async getFunctionHosts(functionId: string): Promise<string[]> {
+    async getFunctionHosts(functionId: string): Promise<unknown[]> {
         const response = await fetchWithTimeout(this.getUrl(`functions/${functionId}/hosts`), {
             method: 'GET',
             headers: { Accept: 'application/json' },

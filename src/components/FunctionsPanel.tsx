@@ -6,6 +6,13 @@ import { Badge } from '@/components/ui/badge';
 import { useAppStore } from '@/lib/store';
 import type { ComponentTopic, Operation } from '@/lib/types';
 
+/** Host app object returned from /functions/{id}/hosts */
+interface FunctionHost {
+    id: string;
+    name: string;
+    href: string;
+}
+
 type FunctionTab = 'overview' | 'hosts' | 'data' | 'operations';
 
 interface TabConfig {
@@ -39,7 +46,7 @@ interface FunctionsPanelProps {
  */
 export function FunctionsPanel({ functionId, functionName, description, path, onNavigate }: FunctionsPanelProps) {
     const [activeTab, setActiveTab] = useState<FunctionTab>('overview');
-    const [hosts, setHosts] = useState<string[]>([]);
+    const [hosts, setHosts] = useState<FunctionHost[]>([]);
     const [topics, setTopics] = useState<ComponentTopic[]>([]);
     const [operations, setOperations] = useState<Operation[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -62,8 +69,8 @@ export function FunctionsPanel({ functionId, functionName, description, path, on
                 // Use optional chaining to handle missing API methods gracefully
                 const [hostsData, topicsData, opsData] = await Promise.all([
                     client.getFunctionHosts
-                        ? client.getFunctionHosts(functionId).catch(() => [] as string[])
-                        : Promise.resolve<string[]>([]),
+                        ? client.getFunctionHosts(functionId).catch(() => [] as FunctionHost[])
+                        : Promise.resolve<FunctionHost[]>([]),
                     client.getFunctionData
                         ? client.getFunctionData(functionId).catch(() => [] as ComponentTopic[])
                         : Promise.resolve<ComponentTopic[]>([]),
@@ -72,7 +79,16 @@ export function FunctionsPanel({ functionId, functionName, description, path, on
                         : Promise.resolve<Operation[]>([]),
                 ]);
 
-                setHosts(hostsData);
+                // Normalize hosts - API returns objects with {id, name, href}
+                const normalizedHosts = hostsData.map((h: unknown) => {
+                    if (typeof h === 'string') {
+                        return { id: h, name: h, href: `/api/v1/apps/${h}` };
+                    }
+                    const hostObj = h as FunctionHost;
+                    return { id: hostObj.id, name: hostObj.name || hostObj.id, href: hostObj.href || '' };
+                });
+
+                setHosts(normalizedHosts);
                 setTopics(topicsData);
                 setOperations(opsData);
             } catch (error) {
@@ -226,16 +242,17 @@ export function FunctionsPanel({ functionId, functionName, description, path, on
                             </div>
                         ) : (
                             <div className="space-y-2">
-                                {hosts.map((hostId) => (
+                                {hosts.map((host) => (
                                     <div
-                                        key={hostId}
+                                        key={host.id}
                                         className="flex items-center gap-3 p-3 rounded-lg border hover:bg-accent/30 cursor-pointer group"
-                                        onClick={() => handleResourceClick(`/apps/${hostId}`)}
+                                        onClick={() => handleResourceClick(`/apps/${host.id}`)}
                                     >
                                         <div className="p-1.5 rounded bg-emerald-100 dark:bg-emerald-900">
                                             <Cpu className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                                         </div>
-                                        <span className="font-mono text-sm truncate flex-1">{hostId}</span>
+                                        <span className="font-medium text-sm truncate flex-1">{host.name}</span>
+                                        <span className="font-mono text-xs text-muted-foreground">{host.id}</span>
                                         <Badge variant="outline" className="text-emerald-600 border-emerald-300">
                                             app
                                         </Badge>
