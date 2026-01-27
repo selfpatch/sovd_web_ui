@@ -4,6 +4,7 @@ import { Layers, Box, ChevronRight, MapPin } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useAppStore } from '@/lib/store';
+import type { EntityTreeNode } from '@/lib/types';
 
 type AreaTab = 'overview' | 'components';
 
@@ -46,10 +47,31 @@ export function AreasPanel({ areaId, areaName, path }: AreasPanelProps) {
         }))
     );
 
-    // Find the area node in the tree to get its children (components)
-    const areaNode = rootEntities.find((n) => n.id === areaId || n.path === path);
-    const components = areaNode?.children?.filter((c) => c.type === 'component') || [];
-    const subareas = areaNode?.children?.filter((c) => c.type === 'subarea') || [];
+    // Recursive function to find area node in tree (areas are children of server node)
+    const findAreaNode = (
+        nodes: EntityTreeNode[] | undefined,
+        targetId: string,
+        targetPath: string
+    ): EntityTreeNode | undefined => {
+        if (!nodes) return undefined;
+        for (const node of nodes) {
+            if (node.id === targetId || node.path === targetPath) {
+                return node;
+            }
+            if (node.children && Array.isArray(node.children)) {
+                const found = findAreaNode(node.children, targetId, targetPath);
+                if (found) {
+                    return found;
+                }
+            }
+        }
+        return undefined;
+    };
+
+    // Find the area node in the tree (areas are now children of server node)
+    const areaNode = findAreaNode(rootEntities, areaId, path);
+    const components = areaNode?.children?.filter((c: EntityTreeNode) => c.type === 'component') || [];
+    const subareas = areaNode?.children?.filter((c: EntityTreeNode) => c.type === 'subarea') || [];
 
     const handleComponentClick = (componentPath: string) => {
         selectEntity(componentPath);

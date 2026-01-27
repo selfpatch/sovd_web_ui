@@ -332,8 +332,10 @@ export function FaultsDashboard() {
                 // Find the fault to get entity info
                 const fault = faults.find((f) => f.code === code);
                 if (fault) {
-                    // Note: This assumes faults are from components. May need adjustment.
-                    await client.clearFault('components', fault.entity_id, code);
+                    // Determine the correct entity group based on the fault's entity type
+                    const entityGroup =
+                        fault.entity_type === 'app' || fault.entity_type === 'apps' ? 'apps' : 'components';
+                    await client.clearFault(entityGroup, fault.entity_id, code);
                 }
                 // Reload faults after clearing
                 await loadFaults(true);
@@ -666,6 +668,7 @@ export function FaultsDashboard() {
 
 /**
  * Faults count badge for sidebar
+ * Polls for fault count only when visible via document.hidden check
  */
 export function FaultsCountBadge() {
     const [count, setCount] = useState(0);
@@ -679,6 +682,8 @@ export function FaultsCountBadge() {
 
     useEffect(() => {
         const loadCount = async () => {
+            // Skip polling when document is hidden (tab not visible)
+            if (document.hidden) return;
             if (!client || !isConnected) {
                 setCount(0);
                 return;
@@ -697,7 +702,19 @@ export function FaultsCountBadge() {
 
         loadCount();
         const interval = setInterval(loadCount, DEFAULT_POLL_INTERVAL);
-        return () => clearInterval(interval);
+
+        // Also listen for visibility changes to pause/resume polling
+        const handleVisibilityChange = () => {
+            if (!document.hidden) {
+                loadCount();
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            clearInterval(interval);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
     }, [client, isConnected]);
 
     if (count === 0) return null;

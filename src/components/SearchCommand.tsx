@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useShallow } from 'zustand/shallow';
 import { Layers, Box, Cpu, GitBranch, Search } from 'lucide-react';
 import {
@@ -14,14 +14,12 @@ import type { EntityTreeNode } from '@/lib/types';
 
 /**
  * Flatten tree nodes for search indexing
+ * Note: Virtual folders are no longer created in the tree (resources shown in detail panel)
  */
 function flattenTree(nodes: EntityTreeNode[]): EntityTreeNode[] {
     const result: EntityTreeNode[] = [];
 
     for (const node of nodes) {
-        // Skip virtual folders (data, operations, configurations, faults)
-        if (node.type === 'virtual-folder') continue;
-
         result.push(node);
 
         if (node.children && node.children.length > 0) {
@@ -80,6 +78,7 @@ interface SearchCommandProps {
  */
 export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
     const [search, setSearch] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
 
     const { rootEntities, selectEntity, isConnected } = useAppStore(
         useShallow((state) => ({
@@ -89,18 +88,30 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
         }))
     );
 
-    // Flatten tree for searching
-    const allEntities = flattenTree(rootEntities);
+    // Debounce search input for better performance on large trees
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(search);
+        }, 150);
+        return () => clearTimeout(timer);
+    }, [search]);
 
-    // Filter entities based on search
-    const filteredEntities = search
-        ? allEntities.filter(
-              (entity) =>
-                  entity.name.toLowerCase().includes(search.toLowerCase()) ||
-                  entity.id.toLowerCase().includes(search.toLowerCase()) ||
-                  entity.path.toLowerCase().includes(search.toLowerCase())
-          )
-        : allEntities.slice(0, 20); // Show first 20 when no search
+    // Memoize flattened tree to avoid recalculating on every render
+    const allEntities = useMemo(() => flattenTree(rootEntities), [rootEntities]);
+
+    // Memoize filtered entities based on debounced search
+    const filteredEntities = useMemo(() => {
+        if (!debouncedSearch) {
+            return allEntities.slice(0, 20); // Show first 20 when no search
+        }
+        const searchLower = debouncedSearch.toLowerCase();
+        return allEntities.filter(
+            (entity) =>
+                entity.name.toLowerCase().includes(searchLower) ||
+                entity.id.toLowerCase().includes(searchLower) ||
+                entity.path.toLowerCase().includes(searchLower)
+        );
+    }, [allEntities, debouncedSearch]);
 
     const handleSelect = useCallback(
         (path: string) => {

@@ -113,7 +113,14 @@ function App() {
                     <div
                         className="fixed inset-0 z-30 bg-black/50 md:hidden"
                         onClick={() => setSidebarOpen(false)}
-                        aria-hidden="true"
+                        onKeyDown={(event) => {
+                            if (event.key === 'Escape') {
+                                setSidebarOpen(false);
+                            }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        aria-label="Close sidebar"
                     />
                 )}
 

@@ -136,15 +136,19 @@ export interface VirtualFolderData {
     entityId: string;
     /** Parent entity type (area, subarea, component, subcomponent, app) */
     entityType: 'area' | 'subarea' | 'component' | 'subcomponent' | 'app';
-    /** Topics info (for data folder) - legacy support */
+    /** Topics info used when building data/ virtual folders from pre-fetched topic lists */
     topicsInfo?: ComponentTopicsInfo;
 }
 
 /**
  * Type guard for VirtualFolderData
+ * Supports both new entityId and legacy componentId fields for backward compatibility
  */
 export function isVirtualFolderData(data: unknown): data is VirtualFolderData {
-    return !!data && typeof data === 'object' && 'folderType' in data && 'entityId' in data;
+    if (!data || typeof data !== 'object') return false;
+    if (!('folderType' in data)) return false;
+    // Support both entityId (new) and componentId (legacy)
+    return 'entityId' in data || 'componentId' in data;
 }
 
 /**

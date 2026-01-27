@@ -59,10 +59,17 @@ export function FunctionsPanel({ functionId, functionName, description, path, on
 
             try {
                 // Load hosts, data, and operations in parallel
+                // Use optional chaining to handle missing API methods gracefully
                 const [hostsData, topicsData, opsData] = await Promise.all([
-                    client.getFunctionHosts(functionId).catch(() => []),
-                    client.getFunctionData(functionId).catch(() => []),
-                    client.getFunctionOperations(functionId).catch(() => []),
+                    client.getFunctionHosts
+                        ? client.getFunctionHosts(functionId).catch(() => [] as string[])
+                        : Promise.resolve<string[]>([]),
+                    client.getFunctionData
+                        ? client.getFunctionData(functionId).catch(() => [] as ComponentTopic[])
+                        : Promise.resolve<ComponentTopic[]>([]),
+                    client.getFunctionOperations
+                        ? client.getFunctionOperations(functionId).catch(() => [] as Operation[])
+                        : Promise.resolve<Operation[]>([]),
                 ]);
 
                 setHosts(hostsData);

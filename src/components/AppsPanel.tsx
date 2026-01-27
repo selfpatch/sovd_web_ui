@@ -123,11 +123,13 @@ export function AppsPanel({ appId, appName, fqn, nodeName, namespace, componentI
                                         <Button
                                             variant="link"
                                             className="h-auto p-0 text-xs text-muted-foreground hover:text-primary"
-                                            onClick={() =>
-                                                handleResourceClick(
-                                                    `/${namespace?.split('/')[1] || 'root'}/${componentId}`
-                                                )
-                                            }
+                                            onClick={() => {
+                                                const areaSegment =
+                                                    namespace && namespace.trim().length > 0
+                                                        ? namespace.split('/').filter(Boolean)[0] || 'root'
+                                                        : 'root';
+                                                handleResourceClick(`/${areaSegment}/${componentId}`);
+                                            }}
                                         >
                                             <Box className="w-3 h-3 mr-1" />
                                             {componentId}
