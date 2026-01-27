@@ -653,8 +653,7 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
                             hasTopicsInfo={hasTopicsInfo ?? false}
                             selectEntity={selectEntity}
                         />
-                    ) : isArea || isApp || isFunction ? null : selectedEntity.type === 'service' || // Already handled above with specialized panels
-                      selectedEntity.type === 'action' ? (
+                    ) : isArea || isApp || isFunction || isServer ? null : selectedEntity.type === 'action' ? ( // Already handled above with specialized panels
                         // Service/Action detail view
                         <OperationDetailCard entity={selectedEntity} componentId={componentId} />
                     ) : selectedEntity.type === 'parameter' ? (
