@@ -26,7 +26,6 @@ import { EntityDetailSkeleton } from '@/components/EntityDetailSkeleton';
 import { TopicDiagnosticsPanel } from '@/components/TopicDiagnosticsPanel';
 import { ConfigurationPanel } from '@/components/ConfigurationPanel';
 import { OperationsPanel } from '@/components/OperationsPanel';
-import { DataFolderPanel } from '@/components/DataFolderPanel';
 import { FaultsPanel } from '@/components/FaultsPanel';
 import { AreasPanel } from '@/components/AreasPanel';
 import { AppsPanel } from '@/components/AppsPanel';
@@ -318,63 +317,6 @@ function ParameterDetailCard({ entity, componentId }: ParameterDetailCardProps) 
             </CardContent>
         </Card>
     );
-}
-
-/**
- * Virtual folder content - redirect to appropriate panel
- */
-interface VirtualFolderContentProps {
-    folderType: 'resources' | 'data' | 'operations' | 'configurations' | 'faults' | 'subareas' | 'subcomponents';
-    componentId: string;
-    basePath: string;
-    entityType?: 'components' | 'apps';
-}
-
-function VirtualFolderContent({
-    folderType,
-    componentId,
-    basePath,
-    entityType = 'components',
-}: VirtualFolderContentProps) {
-    switch (folderType) {
-        case 'resources':
-            return (
-                <Card>
-                    <CardContent className="pt-6">
-                        <div className="text-center text-muted-foreground">
-                            <p>Resources for {componentId}</p>
-                            <p className="text-sm mt-2">
-                                Expand this folder to view data, operations, configurations, and faults.
-                            </p>
-                        </div>
-                    </CardContent>
-                </Card>
-            );
-        case 'subareas':
-        case 'subcomponents':
-            return (
-                <Card>
-                    <CardContent className="pt-6">
-                        <div className="text-center text-muted-foreground">
-                            <p>
-                                {folderType === 'subareas' ? 'Subareas' : 'Subcomponents'} for {componentId}
-                            </p>
-                            <p className="text-sm mt-2">Expand this folder to view child {folderType}.</p>
-                        </div>
-                    </CardContent>
-                </Card>
-            );
-        case 'data':
-            return <DataFolderPanel basePath={basePath} />;
-        case 'operations':
-            return <OperationsPanel componentId={componentId} entityType={entityType} />;
-        case 'configurations':
-            return <ConfigurationPanel componentId={componentId} entityType={entityType} />;
-        case 'faults':
-            return <FaultsPanel componentId={componentId} entityType={entityType} />;
-        default:
-            return null;
-    }
 }
 
 interface EntityDetailPanelProps {
@@ -718,49 +660,6 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
                     ) : selectedEntity.type === 'parameter' ? (
                         // Parameter detail view
                         <ParameterDetailCard entity={selectedEntity} componentId={componentId} />
-                    ) : selectedEntity.folderType ? (
-                        // Virtual folder selected - show appropriate panel
-                        (() => {
-                            // Extract base path (component path) from folder path
-                            // e.g., /root/route_server/resources/data -> /root/route_server
-                            const folderPathParts = selectedPath.split('/');
-                            // Remove folder names (e.g., data/operations/configurations/faults and resources)
-                            // Use safety counter to prevent infinite loops
-                            const folderNames = ['data', 'operations', 'configurations', 'faults', 'resources'];
-                            let safetyCounter = 0;
-                            const maxIterations = 10;
-                            while (
-                                folderPathParts.length > 0 &&
-                                folderNames.includes(folderPathParts[folderPathParts.length - 1] || '') &&
-                                safetyCounter < maxIterations
-                            ) {
-                                folderPathParts.pop();
-                                safetyCounter++;
-                            }
-                            const basePath = folderPathParts.join('/');
-                            // Determine entity type from folder data
-                            const entityType = selectedEntity.entityType === 'app' ? 'apps' : 'components';
-                            // Use entityId (new) or componentId (legacy) for backward compatibility
-                            const componentId =
-                                (selectedEntity.entityId as string) || (selectedEntity.componentId as string);
-                            return (
-                                <VirtualFolderContent
-                                    folderType={
-                                        selectedEntity.folderType as
-                                            | 'resources'
-                                            | 'data'
-                                            | 'operations'
-                                            | 'configurations'
-                                            | 'faults'
-                                            | 'subareas'
-                                            | 'subcomponents'
-                                    }
-                                    componentId={componentId}
-                                    basePath={basePath}
-                                    entityType={entityType}
-                                />
-                            );
-                        })()
                     ) : (
                         <Card>
                             <CardContent className="pt-6">
