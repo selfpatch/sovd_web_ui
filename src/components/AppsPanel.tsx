@@ -5,7 +5,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/lib/store';
-import type { ComponentTopic, Operation, Parameter, Fault } from '@/lib/types';
+import { ConfigurationPanel } from '@/components/ConfigurationPanel';
+import type { ComponentTopic, Operation, Fault } from '@/lib/types';
 
 type AppTab = 'overview' | 'data' | 'operations' | 'configurations' | 'faults';
 
@@ -47,35 +48,33 @@ export function AppsPanel({ appId, appName, fqn, nodeName, namespace, componentI
     const [activeTab, setActiveTab] = useState<AppTab>('overview');
     const [topics, setTopics] = useState<ComponentTopic[]>([]);
     const [operations, setOperations] = useState<Operation[]>([]);
-    const [parameters, setParameters] = useState<Parameter[]>([]);
     const [faults, setFaults] = useState<Fault[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
-    const { client, selectEntity } = useAppStore(
+    const { client, selectEntity, configurations } = useAppStore(
         useShallow((state) => ({
             client: state.client,
             selectEntity: state.selectEntity,
+            configurations: state.configurations,
         }))
     );
 
-    // Load app resources on mount
+    // Load app resources on mount (configurations are loaded by ConfigurationPanel)
     useEffect(() => {
         const loadAppData = async () => {
             if (!client) return;
             setIsLoading(true);
 
             try {
-                // Load all resources in parallel
-                const [topicsData, opsData, configData, faultsData] = await Promise.all([
+                // Load resources in parallel (configurations handled by ConfigurationPanel)
+                const [topicsData, opsData, faultsData] = await Promise.all([
                     client.getAppData(appId).catch(() => []),
                     client.listOperations(appId, 'apps').catch(() => []),
-                    client.listConfigurations(appId, 'apps').catch(() => ({ parameters: [] })),
                     client.listEntityFaults('apps', appId).catch(() => ({ items: [] })),
                 ]);
 
                 setTopics(topicsData);
                 setOperations(opsData);
-                setParameters(configData.parameters);
                 setFaults(faultsData.items);
             } catch (error) {
                 console.error('Failed to load app data:', error);
@@ -150,7 +149,7 @@ export function AppsPanel({ appId, appName, fqn, nodeName, namespace, componentI
                             let count = 0;
                             if (tab.id === 'data') count = topics.length;
                             if (tab.id === 'operations') count = operations.length;
-                            if (tab.id === 'configurations') count = parameters.length;
+                            if (tab.id === 'configurations') count = configurations.get(appId)?.length || 0;
                             if (tab.id === 'faults') count = activeFaults.length;
 
                             return (
@@ -236,7 +235,7 @@ export function AppsPanel({ appId, appName, fqn, nodeName, namespace, componentI
                                 className="p-3 rounded-lg border hover:bg-accent/50 transition-colors text-left"
                             >
                                 <Settings className="w-4 h-4 text-purple-500 mb-1" />
-                                <div className="text-2xl font-semibold">{parameters.length}</div>
+                                <div className="text-2xl font-semibold">{configurations.get(appId)?.length || 0}</div>
                                 <div className="text-xs text-muted-foreground">Parameters</div>
                             </button>
                             <button
@@ -363,46 +362,7 @@ export function AppsPanel({ appId, appName, fqn, nodeName, namespace, componentI
                 </Card>
             )}
 
-            {activeTab === 'configurations' && (
-                <Card>
-                    <CardHeader className="pb-3">
-                        <CardTitle className="text-base flex items-center gap-2">
-                            <Settings className="w-4 h-4 text-purple-500" />
-                            Parameters
-                        </CardTitle>
-                        <CardDescription>{parameters.length} parameters configured</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        {parameters.length === 0 ? (
-                            <div className="text-center text-muted-foreground py-4">
-                                No parameters available for this app.
-                            </div>
-                        ) : (
-                            <div className="space-y-2">
-                                {parameters.map((param) => {
-                                    const paramPath = `${path}/configurations/${encodeURIComponent(param.name)}`;
-                                    return (
-                                        <div
-                                            key={param.name}
-                                            className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50 cursor-pointer group"
-                                            onClick={() => handleResourceClick(paramPath)}
-                                        >
-                                            <Badge variant="outline" className="text-purple-600 border-purple-300">
-                                                {param.type}
-                                            </Badge>
-                                            <span className="font-mono text-sm truncate flex-1">{param.name}</span>
-                                            <span className="text-xs text-muted-foreground font-mono truncate max-w-[150px]">
-                                                {JSON.stringify(param.value)}
-                                            </span>
-                                            <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100" />
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            )}
+            {activeTab === 'configurations' && <ConfigurationPanel componentId={appId} entityType="apps" />}
 
             {activeTab === 'faults' && (
                 <Card>
