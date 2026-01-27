@@ -166,7 +166,10 @@ export function AppsPanel({ appId, appName, fqn, nodeName, namespace, componentI
                                     <TabIcon className="w-4 h-4" />
                                     {tab.label}
                                     {count > 0 && (
-                                        <Badge variant={isActive ? 'default' : 'secondary'} className="ml-1 h-5 px-1.5">
+                                        <Badge
+                                            variant={isActive ? 'default' : 'secondary'}
+                                            className={`ml-1 h-5 px-1.5 ${tab.id === 'faults' && count > 0 ? 'bg-red-500 text-white' : ''}`}
+                                        >
                                             {count}
                                         </Badge>
                                     )}

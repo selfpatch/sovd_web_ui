@@ -31,6 +31,9 @@ import type {
     SovdError,
 } from './types';
 
+/** Entity types that support resource collections (data, operations, configurations, faults) */
+export type SovdResourceEntityType = 'areas' | 'components' | 'apps' | 'functions';
+
 /**
  * Helper to unwrap items from SOVD API response
  * API returns {items: [...]} format, but we often want just the array
@@ -532,12 +535,12 @@ export class SovdApiClient {
 
     /**
      * List all configurations (parameters) for an entity
-     * @param entityId Entity ID (component or app)
-     * @param entityType Entity type ('components' or 'apps')
+     * @param entityId Entity ID
+     * @param entityType Entity type
      */
     async listConfigurations(
         entityId: string,
-        entityType: 'components' | 'apps' = 'components'
+        entityType: SovdResourceEntityType = 'components'
     ): Promise<ComponentConfigurations> {
         const response = await fetchWithTimeout(this.getUrl(`${entityType}/${entityId}/configurations`), {
             method: 'GET',
@@ -695,10 +698,10 @@ export class SovdApiClient {
 
     /**
      * List all operations (services + actions) for an entity (component or app)
-     * @param entityType Entity type ('components' or 'apps')
+     * @param entityType Entity type
      * @param entityId Entity ID
      */
-    async listOperations(entityId: string, entityType: 'components' | 'apps' = 'components'): Promise<Operation[]> {
+    async listOperations(entityId: string, entityType: SovdResourceEntityType = 'components'): Promise<Operation[]> {
         const response = await fetchWithTimeout(this.getUrl(`${entityType}/${entityId}/operations`), {
             method: 'GET',
             headers: { Accept: 'application/json' },
@@ -1197,6 +1200,32 @@ export class SovdApiClient {
     }
 
     // ===========================================================================
+    // GENERIC ENTITY RESOURCES (for aggregated views)
+    // ===========================================================================
+
+    /**
+     * Get data items for any entity type (areas, components, apps, functions)
+     * Returns aggregated data from child entities
+     * @param entityType Entity type
+     * @param entityId Entity identifier
+     */
+    async getEntityData(entityType: SovdResourceEntityType, entityId: string): Promise<ComponentTopic[]> {
+        const response = await fetchWithTimeout(this.getUrl(`${entityType}/${entityId}/data`), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                return [];
+            }
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        return unwrapItems<ComponentTopic>(await response.json());
+    }
+
+    // ===========================================================================
     // FAULTS API (Diagnostic Trouble Codes)
     // ===========================================================================
 
@@ -1282,10 +1311,10 @@ export class SovdApiClient {
 
     /**
      * List faults for a specific entity
-     * @param entityType Entity type ('components' or 'apps')
+     * @param entityType Entity type
      * @param entityId Entity identifier
      */
-    async listEntityFaults(entityType: 'components' | 'apps', entityId: string): Promise<ListFaultsResponse> {
+    async listEntityFaults(entityType: SovdResourceEntityType, entityId: string): Promise<ListFaultsResponse> {
         const response = await fetchWithTimeout(this.getUrl(`${entityType}/${entityId}/faults`), {
             method: 'GET',
             headers: { Accept: 'application/json' },
