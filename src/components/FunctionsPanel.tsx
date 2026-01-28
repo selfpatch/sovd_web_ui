@@ -16,6 +16,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { useAppStore } from '@/lib/store';
 import { ConfigurationPanel } from '@/components/ConfigurationPanel';
+import { OperationsPanel } from '@/components/OperationsPanel';
 import type { ComponentTopic, Operation, Parameter, Fault } from '@/lib/types';
 
 /** Host app object returned from /functions/{id}/hosts */
@@ -127,10 +128,6 @@ export function FunctionsPanel({ functionId, functionName, description, path, on
             selectEntity(resourcePath);
         }
     };
-
-    // Count resources for badges
-    const services = operations.filter((o) => o.kind === 'service');
-    const actions = operations.filter((o) => o.kind === 'action');
 
     return (
         <div className="space-y-6">
@@ -353,53 +350,9 @@ export function FunctionsPanel({ functionId, functionName, description, path, on
                 </Card>
             )}
 
-            {activeTab === 'operations' && (
-                <Card>
-                    <CardHeader className="pb-3">
-                        <CardTitle className="text-base flex items-center gap-2">
-                            <Zap className="w-4 h-4 text-amber-500" />
-                            Aggregated Operations
-                        </CardTitle>
-                        <CardDescription>
-                            {services.length} services, {actions.length} actions from all hosts
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        {operations.length === 0 ? (
-                            <div className="text-center text-muted-foreground py-4">
-                                <Zap className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                                <p className="text-sm">No operations available.</p>
-                            </div>
-                        ) : (
-                            <div className="space-y-2">
-                                {operations.map((op) => (
-                                    <div
-                                        key={op.name}
-                                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50"
-                                    >
-                                        <Badge
-                                            variant="outline"
-                                            className={
-                                                op.kind === 'service'
-                                                    ? 'text-amber-600 border-amber-300'
-                                                    : 'text-orange-600 border-orange-300'
-                                            }
-                                        >
-                                            {op.kind}
-                                        </Badge>
-                                        <span className="font-mono text-sm truncate flex-1">{op.name}</span>
-                                        <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                                            {op.type}
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            )}
+            {activeTab === 'operations' && <OperationsPanel entityId={functionId} entityType="functions" />}
 
-            {activeTab === 'configurations' && <ConfigurationPanel componentId={functionId} entityType="functions" />}
+            {activeTab === 'configurations' && <ConfigurationPanel entityId={functionId} entityType="functions" />}
 
             {activeTab === 'faults' && (
                 <Card>

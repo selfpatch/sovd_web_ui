@@ -13,8 +13,7 @@ src/
 │   ├── EntityTreeSidebar.tsx    # Main navigation tree
 │   ├── EntityDetailPanel.tsx    # Entity details view
 │   ├── OperationsPanel.tsx      # ROS 2 service/action invocation
-│   ├── ConfigurationPanel.tsx   # ROS 2 parameter management
-│   └── DataFolderPanel.tsx      # Topic subscriptions
+│   └── ConfigurationPanel.tsx   # ROS 2 parameter management
 ├── lib/
 │   ├── sovd-api.ts     # Typed HTTP client for gateway REST API
 │   ├── store.ts        # Zustand state management

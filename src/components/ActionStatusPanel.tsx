@@ -5,12 +5,13 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAppStore, type AppState } from '@/lib/store';
-import type { ExecutionStatus } from '@/lib/types';
+import type { ExecutionStatus, SovdResourceEntityType } from '@/lib/types';
 
 interface ActionStatusPanelProps {
-    componentId: string;
+    entityId: string;
     operationName: string;
     executionId: string;
+    entityType?: SovdResourceEntityType;
 }
 
 /**
@@ -77,7 +78,12 @@ function isActiveStatus(status: ExecutionStatus): boolean {
     return ['pending', 'running'].includes(status);
 }
 
-export function ActionStatusPanel({ componentId, operationName, executionId }: ActionStatusPanelProps) {
+export function ActionStatusPanel({
+    entityId,
+    operationName,
+    executionId,
+    entityType = 'components',
+}: ActionStatusPanelProps) {
     const {
         activeExecutions,
         autoRefreshExecutions,
@@ -103,31 +109,31 @@ export function ActionStatusPanel({ componentId, operationName, executionId }: A
 
     // Manual refresh
     const handleRefresh = useCallback(() => {
-        refreshExecutionStatus(componentId, operationName, executionId);
-    }, [componentId, operationName, executionId, refreshExecutionStatus]);
+        refreshExecutionStatus(entityId, operationName, executionId, entityType);
+    }, [entityId, operationName, executionId, refreshExecutionStatus, entityType]);
 
     // Cancel action
     const handleCancel = useCallback(async () => {
-        await cancelExecution(componentId, operationName, executionId);
-    }, [componentId, operationName, executionId, cancelExecution]);
+        await cancelExecution(entityId, operationName, executionId, entityType);
+    }, [entityId, operationName, executionId, cancelExecution, entityType]);
 
     // Auto-refresh effect
     useEffect(() => {
         if (!autoRefreshExecutions || isTerminal) return;
 
         const interval = setInterval(() => {
-            refreshExecutionStatus(componentId, operationName, executionId);
+            refreshExecutionStatus(entityId, operationName, executionId, entityType);
         }, 1000); // Refresh every second
 
         return () => clearInterval(interval);
-    }, [autoRefreshExecutions, isTerminal, componentId, operationName, executionId, refreshExecutionStatus]);
+    }, [autoRefreshExecutions, isTerminal, entityId, operationName, executionId, refreshExecutionStatus, entityType]);
 
     // Initial fetch
     useEffect(() => {
         if (!execution) {
-            refreshExecutionStatus(componentId, operationName, executionId);
+            refreshExecutionStatus(entityId, operationName, executionId, entityType);
         }
-    }, [executionId, execution, componentId, operationName, refreshExecutionStatus]);
+    }, [executionId, execution, entityId, operationName, refreshExecutionStatus, entityType]);
 
     if (!execution) {
         return (

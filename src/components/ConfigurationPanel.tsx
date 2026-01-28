@@ -10,7 +10,7 @@ import type { Parameter, ParameterType } from '@/lib/types';
 import type { SovdResourceEntityType } from '@/lib/sovd-api';
 
 interface ConfigurationPanelProps {
-    componentId: string;
+    entityId: string;
     /** Optional parameter name to highlight */
     highlightParam?: string;
     /** Entity type for API calls */
@@ -262,11 +262,7 @@ function parseValue(input: string, type: ParameterType): unknown {
     }
 }
 
-export function ConfigurationPanel({
-    componentId,
-    highlightParam,
-    entityType = 'components',
-}: ConfigurationPanelProps) {
+export function ConfigurationPanel({ entityId, highlightParam, entityType = 'components' }: ConfigurationPanelProps) {
     const {
         configurations,
         isLoadingConfigurations,
@@ -286,44 +282,44 @@ export function ConfigurationPanel({
     );
 
     const [isResettingAll, setIsResettingAll] = useState(false);
-    const parameters = configurations.get(componentId) || [];
-    const prevComponentIdRef = useRef<string | null>(null);
+    const parameters = configurations.get(entityId) || [];
+    const prevEntityIdRef = useRef<string | null>(null);
 
-    // Fetch configurations on mount and when componentId changes
+    // Fetch configurations on mount and when entityId changes
     useEffect(() => {
-        // Always fetch if componentId changed, or if not yet loaded
-        if (prevComponentIdRef.current !== componentId || !configurations.has(componentId)) {
-            fetchConfigurations(componentId, entityType);
+        // Always fetch if entityId changed, or if not yet loaded
+        if (prevEntityIdRef.current !== entityId || !configurations.has(entityId)) {
+            fetchConfigurations(entityId, entityType);
         }
-        prevComponentIdRef.current = componentId;
-    }, [componentId, entityType, fetchConfigurations, configurations]);
+        prevEntityIdRef.current = entityId;
+    }, [entityId, entityType, fetchConfigurations, configurations]);
 
     const handleRefresh = useCallback(() => {
-        fetchConfigurations(componentId, entityType);
-    }, [componentId, fetchConfigurations, entityType]);
+        fetchConfigurations(entityId, entityType);
+    }, [entityId, fetchConfigurations, entityType]);
 
     const handleSetParameter = useCallback(
         async (name: string, value: unknown) => {
-            return setParameter(componentId, name, value, entityType);
+            return setParameter(entityId, name, value, entityType);
         },
-        [componentId, setParameter, entityType]
+        [entityId, setParameter, entityType]
     );
 
     const handleResetParameter = useCallback(
         async (name: string) => {
-            return resetParameter(componentId, name, entityType);
+            return resetParameter(entityId, name, entityType);
         },
-        [componentId, resetParameter, entityType]
+        [entityId, resetParameter, entityType]
     );
 
     const handleResetAll = useCallback(async () => {
         setIsResettingAll(true);
         try {
-            await resetAllConfigurations(componentId, entityType);
+            await resetAllConfigurations(entityId, entityType);
         } finally {
             setIsResettingAll(false);
         }
-    }, [componentId, resetAllConfigurations, entityType]);
+    }, [entityId, resetAllConfigurations, entityType]);
 
     if (isLoadingConfigurations && parameters.length === 0) {
         return (

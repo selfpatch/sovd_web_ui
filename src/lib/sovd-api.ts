@@ -11,6 +11,7 @@ import type {
     ResetConfigurationResponse,
     ResetAllConfigurationsResponse,
     Operation,
+    OperationKind,
     DataItemResponse,
     Parameter,
     // New SOVD-compliant types
@@ -236,7 +237,7 @@ export class SovdApiClient {
             case 'data':
                 return this.transformDataResponse(rawData) as ResourceListResults[T];
             case 'operations':
-                return unwrapItems<Operation>(rawData) as ResourceListResults[T];
+                return this.transformOperationsResponse(rawData) as ResourceListResults[T];
             case 'configurations':
                 return this.transformConfigurationsResponse(rawData, entityId) as ResourceListResults[T];
             case 'faults':
@@ -244,6 +245,89 @@ export class SovdApiClient {
             default:
                 throw new Error(`Unknown resource type: ${resourceType}`);
         }
+    }
+
+    /**
+     * Transform operations API response to Operation[]
+     * Extracts kind, type, and type_info from x-medkit extension
+     */
+    private transformOperationsResponse(rawData: unknown): Operation[] {
+        interface RawOperation {
+            id: string;
+            name: string;
+            asynchronous_execution?: boolean;
+            'x-medkit'?: {
+                entity_id?: string;
+                ros2?: {
+                    kind?: 'service' | 'action';
+                    service?: string;
+                    action?: string;
+                    type?: string;
+                };
+                type_info?: {
+                    request?: unknown;
+                    response?: unknown;
+                    goal?: unknown;
+                    result?: unknown;
+                    feedback?: unknown;
+                };
+            };
+        }
+        const rawOps = unwrapItems<RawOperation>(rawData);
+        return rawOps.map((op) => {
+            const xMedkit = op['x-medkit'];
+            const ros2Info = xMedkit?.ros2;
+            const rawTypeInfo = xMedkit?.type_info;
+
+            // Determine kind from x-medkit.ros2.kind or from asynchronous_execution
+            let kind: OperationKind = 'service';
+            if (ros2Info?.kind) {
+                kind = ros2Info.kind;
+            } else if (op.asynchronous_execution) {
+                kind = 'action';
+            }
+
+            // Build type_info with appropriate schema structure
+            let typeInfo: Operation['type_info'] | undefined;
+            if (rawTypeInfo) {
+                if (kind === 'service' && (rawTypeInfo.request || rawTypeInfo.response)) {
+                    typeInfo = {
+                        schema: {
+                            request:
+                                (rawTypeInfo.request
+                                    ? convertJsonSchemaToTopicSchema(rawTypeInfo.request)
+                                    : undefined) ?? {},
+                            response:
+                                (rawTypeInfo.response
+                                    ? convertJsonSchemaToTopicSchema(rawTypeInfo.response)
+                                    : undefined) ?? {},
+                        },
+                    };
+                } else if (kind === 'action' && (rawTypeInfo.goal || rawTypeInfo.result)) {
+                    typeInfo = {
+                        schema: {
+                            goal:
+                                (rawTypeInfo.goal ? convertJsonSchemaToTopicSchema(rawTypeInfo.goal) : undefined) ?? {},
+                            result:
+                                (rawTypeInfo.result ? convertJsonSchemaToTopicSchema(rawTypeInfo.result) : undefined) ??
+                                {},
+                            feedback:
+                                (rawTypeInfo.feedback
+                                    ? convertJsonSchemaToTopicSchema(rawTypeInfo.feedback)
+                                    : undefined) ?? {},
+                        },
+                    };
+                }
+            }
+
+            return {
+                name: op.name || op.id,
+                path: ros2Info?.service || ros2Info?.action || `/${op.name}`,
+                type: ros2Info?.type || '',
+                kind,
+                type_info: typeInfo,
+            };
+        });
     }
 
     /**
@@ -498,6 +582,61 @@ export class SovdApiClient {
                 topicData: topic,
                 rosType: topic.type,
                 type: 'topic',
+            };
+        }
+
+        // Handle virtual folder paths with /operations/
+        // Patterns:
+        //   /area/operations/op → areas/{area}/operations/{op}
+        //   /area/component/operations/op → components/{component}/operations/{op}
+        //   /area/component/apps/app/operations/op → apps/{app}/operations/{op}
+        //   /functions/function/operations/op → functions/{function}/operations/{op}
+        if (parts.includes('operations')) {
+            const opsIndex = parts.indexOf('operations');
+            const operationName = parts[opsIndex + 1];
+
+            if (!operationName) {
+                throw new Error('Invalid path: missing operation name after /operations/');
+            }
+
+            const decodedOpName = decodeURIComponent(operationName);
+
+            // Determine entity type and ID based on path structure
+            let entityType: SovdResourceEntityType;
+            let entityId: string;
+
+            const appsIndex = parts.indexOf('apps');
+            const functionsIndex = parts.indexOf('functions');
+
+            if (appsIndex !== -1 && appsIndex < opsIndex) {
+                // App operation: /area/component/apps/app/operations/op
+                entityType = 'apps';
+                entityId = parts[appsIndex + 1]!;
+            } else if (functionsIndex !== -1 && functionsIndex < opsIndex) {
+                // Function operation: /functions/function/operations/op
+                entityType = 'functions';
+                entityId = parts[functionsIndex + 1]!;
+            } else if (opsIndex === 1) {
+                // Area operation: /area/operations/op (opsIndex is 1, only area before operations)
+                entityType = 'areas';
+                entityId = parts[0]!;
+            } else {
+                // Component operation: /area/component/operations/op (opsIndex is 2+)
+                entityType = 'components';
+                entityId = parts[opsIndex - 1]!;
+            }
+
+            // Fetch the operation details
+            const operation = await this.getOperation(entityId, decodedOpName, entityType);
+
+            return {
+                id: operationName,
+                name: operation.name,
+                href: path,
+                type: operation.kind, // 'service' or 'action'
+                data: operation,
+                componentId: entityId,
+                entityType,
             };
         }
 

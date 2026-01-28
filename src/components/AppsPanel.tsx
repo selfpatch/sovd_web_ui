@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/lib/store';
 import { ConfigurationPanel } from '@/components/ConfigurationPanel';
 import { FaultsPanel } from '@/components/FaultsPanel';
+import { OperationsPanel } from '@/components/OperationsPanel';
 import type { ComponentTopic, Operation, Fault } from '@/lib/types';
 
 type AppTab = 'overview' | 'data' | 'operations' | 'configurations' | 'faults';
@@ -98,8 +99,6 @@ export function AppsPanel({ appId, appName, fqn, nodeName, namespace, componentI
     // Count resources for badges
     const publishTopics = topics.filter((t) => t.isPublisher);
     const subscribeTopics = topics.filter((t) => t.isSubscriber);
-    const services = operations.filter((o) => o.kind === 'service');
-    const actions = operations.filter((o) => o.kind === 'action');
     const activeFaults = faults.filter((f) => f.status === 'active');
 
     return (
@@ -313,59 +312,11 @@ export function AppsPanel({ appId, appName, fqn, nodeName, namespace, componentI
                 </Card>
             )}
 
-            {activeTab === 'operations' && (
-                <Card>
-                    <CardHeader className="pb-3">
-                        <CardTitle className="text-base flex items-center gap-2">
-                            <Zap className="w-4 h-4 text-amber-500" />
-                            Operations
-                        </CardTitle>
-                        <CardDescription>
-                            {services.length} services, {actions.length} actions
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        {operations.length === 0 ? (
-                            <div className="text-center text-muted-foreground py-4">
-                                No operations available for this app.
-                            </div>
-                        ) : (
-                            <div className="space-y-2">
-                                {operations.map((op) => {
-                                    const opPath = `${path}/operations/${encodeURIComponent(op.name)}`;
-                                    return (
-                                        <div
-                                            key={op.name}
-                                            className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50 cursor-pointer group"
-                                            onClick={() => handleResourceClick(opPath)}
-                                        >
-                                            <Badge
-                                                variant="outline"
-                                                className={
-                                                    op.kind === 'service'
-                                                        ? 'text-amber-600 border-amber-300'
-                                                        : 'text-orange-600 border-orange-300'
-                                                }
-                                            >
-                                                {op.kind}
-                                            </Badge>
-                                            <span className="font-mono text-sm truncate flex-1">{op.name}</span>
-                                            <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                                                {op.type}
-                                            </span>
-                                            <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100" />
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            )}
+            {activeTab === 'operations' && <OperationsPanel entityId={appId} entityType="apps" />}
 
-            {activeTab === 'configurations' && <ConfigurationPanel componentId={appId} entityType="apps" />}
+            {activeTab === 'configurations' && <ConfigurationPanel entityId={appId} entityType="apps" />}
 
-            {activeTab === 'faults' && <FaultsPanel componentId={appId} entityType="apps" />}
+            {activeTab === 'faults' && <FaultsPanel entityId={appId} entityType="apps" />}
 
             {isLoading && <div className="text-center text-muted-foreground py-4">Loading app resources...</div>}
         </div>

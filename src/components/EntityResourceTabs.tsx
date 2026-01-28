@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useShallow } from 'zustand/shallow';
-import { Database, Zap, Settings, AlertTriangle, Loader2, MessageSquare, Clock } from 'lucide-react';
+import { Database, Zap, Settings, AlertTriangle, Loader2, MessageSquare } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useAppStore } from '@/lib/store';
 import { ConfigurationPanel } from '@/components/ConfigurationPanel';
+import { OperationsPanel } from '@/components/OperationsPanel';
 import type { SovdResourceEntityType } from '@/lib/sovd-api';
 import type { ComponentTopic, Operation, Parameter, Fault } from '@/lib/types';
 
@@ -84,10 +85,6 @@ export function EntityResourceTabs({ entityId, entityType, basePath, onNavigate 
             selectEntity(path);
         }
     };
-
-    // Count resources for badges
-    const services = operations.filter((o) => o.kind === 'service');
-    const actions = operations.filter((o) => o.kind === 'action');
 
     return (
         <div className="space-y-4">
@@ -181,56 +178,11 @@ export function EntityResourceTabs({ entityId, entityType, basePath, onNavigate 
                     )}
 
                     {/* Operations Tab */}
-                    {activeTab === 'operations' && (
-                        <Card>
-                            <CardHeader className="pb-3">
-                                <CardTitle className="text-base flex items-center gap-2">
-                                    <Zap className="w-4 h-4 text-amber-500" />
-                                    Operations
-                                </CardTitle>
-                                <CardDescription>
-                                    {services.length} services, {actions.length} actions
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                {operations.length === 0 ? (
-                                    <div className="text-center text-muted-foreground py-4">
-                                        <Zap className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                                        <p className="text-sm">No operations available.</p>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2 max-h-80 overflow-y-auto">
-                                        {operations.map((op) => (
-                                            <div
-                                                key={op.name}
-                                                className="flex items-center gap-3 p-2.5 rounded-lg border hover:bg-accent/30 cursor-pointer"
-                                                onClick={() => {
-                                                    const navPath = basePath
-                                                        ? `${basePath}/operations/${encodeURIComponent(op.name)}`
-                                                        : `/${entityType}/${entityId}/operations/${encodeURIComponent(op.name)}`;
-                                                    handleNavigate(navPath);
-                                                }}
-                                            >
-                                                {op.kind === 'service' ? (
-                                                    <Zap className="w-4 h-4 text-amber-500 shrink-0" />
-                                                ) : (
-                                                    <Clock className="w-4 h-4 text-orange-500 shrink-0" />
-                                                )}
-                                                <span className="font-mono text-xs truncate flex-1">{op.name}</span>
-                                                <Badge variant="outline" className="text-xs shrink-0">
-                                                    {op.kind}
-                                                </Badge>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
-                    )}
+                    {activeTab === 'operations' && <OperationsPanel entityId={entityId} entityType={entityType} />}
 
                     {/* Configurations Tab */}
                     {activeTab === 'configurations' && (
-                        <ConfigurationPanel componentId={entityId} entityType={entityType} />
+                        <ConfigurationPanel entityId={entityId} entityType={entityType} />
                     )}
 
                     {/* Faults Tab */}

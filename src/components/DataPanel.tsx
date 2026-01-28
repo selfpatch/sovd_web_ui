@@ -14,7 +14,7 @@ interface DataPanelProps {
     /** Data item from the API */
     topic: ComponentTopic;
     /** Entity ID for publishing */
-    componentId: string;
+    entityId: string;
     /** Entity type for API endpoint */
     entityType?: SovdResourceEntityType;
     /** API client for publishing */
@@ -194,7 +194,7 @@ function QosDetails({ publishers, subscribers }: { publishers?: TopicEndpoint[];
  */
 export function DataPanel({
     topic,
-    componentId,
+    entityId,
     entityType = 'components',
     client,
     isRefreshing = false,
@@ -278,7 +278,7 @@ export function DataPanel({
                         <span className="text-sm font-medium">Publish Message</span>
                         <TopicPublishForm
                             topic={topic}
-                            componentId={componentId}
+                            entityId={entityId}
                             entityType={entityType}
                             client={client}
                             initialValue={publishValue}
