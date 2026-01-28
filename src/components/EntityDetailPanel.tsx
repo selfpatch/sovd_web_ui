@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/EmptyState';
 import { EntityDetailSkeleton } from '@/components/EntityDetailSkeleton';
-import { TopicDiagnosticsPanel } from '@/components/TopicDiagnosticsPanel';
+import { DataPanel } from '@/components/DataPanel';
 import { ConfigurationPanel } from '@/components/ConfigurationPanel';
 import { OperationsPanel } from '@/components/OperationsPanel';
 import { FaultsPanel } from '@/components/FaultsPanel';
@@ -34,6 +34,7 @@ import { ServerInfoPanel } from '@/components/ServerInfoPanel';
 import { FaultsDashboard } from '@/components/FaultsDashboard';
 import { useAppStore, type AppState } from '@/lib/store';
 import type { ComponentTopic, Parameter } from '@/lib/types';
+import type { SovdResourceEntityType } from '@/lib/sovd-api';
 
 type ComponentTab = 'data' | 'operations' | 'configurations' | 'faults';
 
@@ -45,11 +46,29 @@ interface TabConfig {
 }
 
 const COMPONENT_TABS: TabConfig[] = [
-    { id: 'data', label: 'Data', icon: Database, description: 'Topics & messages' },
+    { id: 'data', label: 'Data', icon: Database, description: 'Data items & messages' },
     { id: 'operations', label: 'Operations', icon: Zap, description: 'Services & actions' },
     { id: 'configurations', label: 'Config', icon: Settings, description: 'Parameters' },
     { id: 'faults', label: 'Faults', icon: AlertTriangle, description: 'Diagnostic trouble codes' },
 ];
+
+/**
+ * Determine entity type from path for API calls
+ * Path examples:
+ * - areas/{area}/components/{component} → 'components'
+ * - areas/{area}/apps/{app} → 'apps'
+ * - functions/{function} → 'functions'
+ * - areas/{area} → 'areas'
+ */
+function getEntityTypeFromPath(path: string): SovdResourceEntityType {
+    const parts = path.split('/').filter(Boolean);
+    // Look for entity type keywords in path
+    if (parts.includes('apps')) return 'apps';
+    if (parts.includes('components')) return 'components';
+    if (parts.includes('functions')) return 'functions';
+    if (parts.includes('areas')) return 'areas';
+    return 'components'; // default fallback
+}
 
 /**
  * Get icon for entity type to display in breadcrumbs
@@ -79,9 +98,10 @@ interface ComponentTabContentProps {
     componentId: string;
     selectedPath: string;
     selectedEntity: NonNullable<AppState['selectedEntity']>;
-    hasTopicsArray: boolean;
     hasTopicsInfo: boolean;
     selectEntity: (path: string) => void;
+    entityType: SovdResourceEntityType;
+    topicsData: ComponentTopic[];
 }
 
 function ComponentTabContent({
@@ -89,9 +109,10 @@ function ComponentTabContent({
     componentId,
     selectedPath,
     selectedEntity,
-    hasTopicsArray,
     hasTopicsInfo,
     selectEntity,
+    entityType,
+    topicsData,
 }: ComponentTabContentProps) {
     switch (activeTab) {
         case 'data':
@@ -99,62 +120,64 @@ function ComponentTabContent({
                 <DataTabContent
                     selectedPath={selectedPath}
                     selectedEntity={selectedEntity}
-                    hasTopicsArray={hasTopicsArray}
                     hasTopicsInfo={hasTopicsInfo}
                     selectEntity={selectEntity}
+                    topicsData={topicsData}
                 />
             );
         case 'operations':
-            return <OperationsPanel componentId={componentId} />;
+            return <OperationsPanel key={componentId} componentId={componentId} entityType={entityType} />;
         case 'configurations':
-            return <ConfigurationPanel componentId={componentId} />;
+            return <ConfigurationPanel key={componentId} componentId={componentId} entityType={entityType} />;
         case 'faults':
-            return <FaultsPanel componentId={componentId} />;
+            return <FaultsPanel key={componentId} componentId={componentId} entityType={entityType} />;
         default:
             return null;
     }
 }
 
 /**
- * Data tab content - shows topics
+ * Data tab content - shows data items
  */
 interface DataTabContentProps {
     selectedPath: string;
     selectedEntity: NonNullable<AppState['selectedEntity']>;
-    hasTopicsArray: boolean;
     hasTopicsInfo: boolean;
     selectEntity: (path: string) => void;
+    topicsData: ComponentTopic[];
 }
 
 function DataTabContent({
     selectedPath,
     selectedEntity,
-    hasTopicsArray,
     hasTopicsInfo,
     selectEntity,
+    topicsData,
 }: DataTabContentProps) {
-    if (hasTopicsArray) {
+    // Use topicsData from props (fetched via API), or fall back to selectedEntity.topics
+    const topics = topicsData.length > 0 ? topicsData : (selectedEntity.topics as ComponentTopic[] | undefined);
+    const hasTopics = topics && topics.length > 0;
+
+    if (hasTopics) {
         return (
             <Card>
                 <CardHeader className="pb-3">
                     <div className="flex items-center gap-2">
                         <Database className="w-5 h-5 text-muted-foreground" />
-                        <CardTitle className="text-base">Topics</CardTitle>
-                        <span className="text-xs text-muted-foreground">
-                            ({(selectedEntity.topics as ComponentTopic[]).length} topics)
-                        </span>
+                        <CardTitle className="text-base">Data</CardTitle>
+                        <span className="text-xs text-muted-foreground">({topics.length} items)</span>
                     </div>
                 </CardHeader>
                 <CardContent>
                     <div className="grid gap-3 md:grid-cols-2">
-                        {(selectedEntity.topics as ComponentTopic[]).map((topic) => {
+                        {topics.map((topic) => {
                             const cleanName = topic.topic.startsWith('/') ? topic.topic.slice(1) : topic.topic;
                             const encodedName = encodeURIComponent(cleanName);
                             const topicPath = `${selectedPath}/data/${encodedName}`;
 
                             return (
                                 <div
-                                    key={topic.topic}
+                                    key={topic.uniqueKey || topic.topic}
                                     className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/30 cursor-pointer group transition-colors"
                                     onClick={() => selectEntity(topicPath)}
                                 >
@@ -253,7 +276,7 @@ function DataTabContent({
     return (
         <Card>
             <CardContent className="pt-6">
-                <div className="text-center text-muted-foreground py-4">No topics available for this component.</div>
+                <div className="text-center text-muted-foreground py-4">No data available for this component.</div>
             </CardContent>
         </Card>
     );
@@ -279,9 +302,10 @@ function OperationDetailCard({ entity, componentId }: OperationDetailCardProps) 
 interface ParameterDetailCardProps {
     entity: NonNullable<AppState['selectedEntity']>;
     componentId: string;
+    entityType: SovdResourceEntityType;
 }
 
-function ParameterDetailCard({ entity, componentId }: ParameterDetailCardProps) {
+function ParameterDetailCard({ entity, componentId, entityType }: ParameterDetailCardProps) {
     const parameterData = entity.data as Parameter | undefined;
 
     if (!parameterData) {
@@ -313,7 +337,7 @@ function ParameterDetailCard({ entity, componentId }: ParameterDetailCardProps) 
                 </div>
             </CardHeader>
             <CardContent>
-                <ConfigurationPanel componentId={componentId} highlightParam={entity.name} />
+                <ConfigurationPanel componentId={componentId} highlightParam={entity.name} entityType={entityType} />
             </CardContent>
         </Card>
     );
@@ -327,6 +351,14 @@ interface EntityDetailPanelProps {
 
 export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntitySelect }: EntityDetailPanelProps) {
     const [activeTab, setActiveTab] = useState<ComponentTab>('data');
+    const [resourceCounts, setResourceCounts] = useState<{
+        data: number;
+        operations: number;
+        configurations: number;
+        faults: number;
+    }>({ data: 0, operations: 0, configurations: 0, faults: 0 });
+    // Store fetched topics data for the Data tab
+    const [topicsData, setTopicsData] = useState<ComponentTopic[]>([]);
 
     const {
         selectedPath,
@@ -356,6 +388,60 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
             onEntitySelect();
         }
     }, [selectedPath, onEntitySelect]);
+
+    // Fetch resource counts when entity changes
+    useEffect(() => {
+        const fetchResourceCounts = async () => {
+            if (!client || !selectedEntity) {
+                setResourceCounts({ data: 0, operations: 0, configurations: 0, faults: 0 });
+                setTopicsData([]);
+                return;
+            }
+
+            const entityId = selectedEntity.id;
+            const isComponent = selectedEntity.type === 'component';
+            const isApp = selectedEntity.type === 'app';
+            const isArea = selectedEntity.type === 'area';
+            const isFunction = selectedEntity.type === 'function';
+
+            // Only fetch counts for entity types that have resources
+            if (!isComponent && !isApp && !isArea && !isFunction) {
+                setResourceCounts({ data: 0, operations: 0, configurations: 0, faults: 0 });
+                setTopicsData([]);
+                return;
+            }
+
+            // Determine entity type for API calls
+            let entityType: SovdResourceEntityType = 'components';
+            if (isApp) entityType = 'apps';
+            else if (isArea) entityType = 'areas';
+            else if (isFunction) entityType = 'functions';
+
+            try {
+                const [dataRes, opsRes, configRes, faultsRes] = await Promise.all([
+                    client.getEntityData(entityType, entityId).catch(() => []),
+                    client.listOperations(entityId, entityType).catch(() => []),
+                    client.listConfigurations(entityId, entityType).catch(() => ({ parameters: [] })),
+                    client.listEntityFaults(entityType, entityId).catch(() => ({ items: [] })),
+                ]);
+
+                // Store the fetched data for the Data tab
+                const fetchedData = Array.isArray(dataRes) ? dataRes : [];
+                setTopicsData(fetchedData);
+
+                setResourceCounts({
+                    data: fetchedData.length,
+                    operations: Array.isArray(opsRes) ? opsRes.length : 0,
+                    configurations: configRes.parameters?.length || 0,
+                    faults: faultsRes.items?.length || 0,
+                });
+            } catch {
+                // Silently handle errors - counts will stay at 0
+            }
+        };
+
+        fetchResourceCounts();
+    }, [client, selectedEntity]);
 
     const handleCopyEntity = async () => {
         if (selectedEntity) {
@@ -424,9 +510,15 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
                 (selectedEntity.topicsInfo.subscribes?.length ?? 0) > 0);
         const hasError = !!selectedEntity.error;
 
-        // Extract component ID from path for component views
+        // Extract component ID from path for component/topic views
         const pathParts = selectedPath.split('/').filter(Boolean);
-        const componentId = (pathParts.length >= 2 ? pathParts[1] : pathParts[0]) ?? selectedEntity.id;
+        // For topics, the path is like: /area/component/data/topicName
+        // We need to find the component ID (segment before /data/)
+        const dataIndex = pathParts.indexOf('data');
+        const parentComponentId = dataIndex > 0 ? pathParts[dataIndex - 1] : null;
+        // Use parent component ID for topics, otherwise use entity's own ID
+        const componentId = isTopic && parentComponentId ? parentComponentId : selectedEntity.id;
+        const entityType = getEntityTypeFromPath(selectedPath);
 
         // Get icon for entity type
         const getEntityTypeIcon = () => {
@@ -467,6 +559,8 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
         // Build breadcrumb from path with type inference
         const breadcrumbs = pathParts.map((part, index) => {
             const breadcrumbPath = '/' + pathParts.slice(0, index + 1).join('/');
+            // Decode URL-encoded parts for display
+            const decodedPart = decodeURIComponent(part);
             // Infer type from path position: server -> area -> component -> app/folder
             let type: string;
             if (part === 'server') {
@@ -481,7 +575,7 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
                 type = 'app';
             }
             return {
-                label: part,
+                label: decodedPart,
                 path: breadcrumbPath,
                 type,
             };
@@ -594,6 +688,7 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
                                         {COMPONENT_TABS.map((tab) => {
                                             const TabIcon = tab.icon;
                                             const isActive = activeTab === tab.id;
+                                            const count = resourceCounts[tab.id];
                                             return (
                                                 <button
                                                     key={tab.id}
@@ -606,6 +701,18 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
                                                 >
                                                     <TabIcon className="w-4 h-4" />
                                                     {tab.label}
+                                                    {count > 0 && (
+                                                        <Badge
+                                                            variant={isActive ? 'default' : 'secondary'}
+                                                            className={`ml-1 h-5 px-1.5 text-xs ${
+                                                                tab.id === 'faults' && count > 0
+                                                                    ? 'bg-red-500 text-white'
+                                                                    : ''
+                                                            }`}
+                                                        >
+                                                            {count}
+                                                        </Badge>
+                                                    )}
                                                 </button>
                                             );
                                         })}
@@ -628,14 +735,15 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
                             </CardContent>
                         </Card>
                     ) : hasTopicData ? (
-                        // Single Topic View - use TopicDiagnosticsPanel
+                        // Single Data View - use DataPanel
                         (() => {
                             const topic = selectedEntity.topicData!;
                             return (
-                                <TopicDiagnosticsPanel
+                                <DataPanel
                                     key={topic.timestamp}
                                     topic={topic}
                                     componentId={componentId}
+                                    entityType={entityType}
                                     client={client}
                                     isRefreshing={isRefreshing}
                                     onRefresh={refreshSelectedEntity}
@@ -649,16 +757,21 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
                             componentId={componentId}
                             selectedPath={selectedPath}
                             selectedEntity={selectedEntity}
-                            hasTopicsArray={hasTopicsArray ?? false}
                             hasTopicsInfo={hasTopicsInfo ?? false}
                             selectEntity={selectEntity}
+                            entityType={entityType}
+                            topicsData={topicsData}
                         />
                     ) : isArea || isApp || isFunction || isServer ? null : selectedEntity.type === 'action' ? ( // Already handled above with specialized panels
                         // Service/Action detail view
                         <OperationDetailCard entity={selectedEntity} componentId={componentId} />
                     ) : selectedEntity.type === 'parameter' ? (
                         // Parameter detail view
-                        <ParameterDetailCard entity={selectedEntity} componentId={componentId} />
+                        <ParameterDetailCard
+                            entity={selectedEntity}
+                            componentId={componentId}
+                            entityType={entityType}
+                        />
                     ) : (
                         <Card>
                             <CardContent className="pt-6">

@@ -5,14 +5,16 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { SchemaForm } from '@/components/SchemaFormField';
 import { getSchemaDefaults, deepMerge } from '@/lib/schema-utils';
-import type { ComponentTopic, TopicSchema } from '@/lib/types';
+import type { ComponentTopic, TopicSchema, SovdResourceEntityType } from '@/lib/types';
 import type { SovdApiClient } from '@/lib/sovd-api';
 
 interface TopicPublishFormProps {
     /** The topic to publish to */
     topic: ComponentTopic;
-    /** Component ID (for API calls) */
+    /** Entity ID (for API calls) */
     componentId: string;
+    /** Entity type for API endpoint */
+    entityType?: SovdResourceEntityType;
     /** API client instance */
     client: SovdApiClient;
     /** External initial value (overrides topic-based defaults) */
@@ -59,7 +61,14 @@ function getInitialValues(topic: ComponentTopic): Record<string, unknown> {
  * Form for publishing messages to a ROS 2 topic
  * Supports both schema-based form view and raw JSON editing
  */
-export function TopicPublishForm({ topic, componentId, client, initialValue, onValueChange }: TopicPublishFormProps) {
+export function TopicPublishForm({
+    topic,
+    componentId,
+    entityType = 'components',
+    client,
+    initialValue,
+    onValueChange,
+}: TopicPublishFormProps) {
     const [viewMode, setViewMode] = useState<ViewMode>('form');
     const [formValues, setFormValues] = useState<Record<string, unknown>>(() => {
         if (initialValue && typeof initialValue === 'object') {
@@ -128,11 +137,9 @@ export function TopicPublishForm({ topic, componentId, client, initialValue, onV
     };
 
     const handlePublish = async () => {
-        // Extract topic name - remove leading slash and component namespace prefix
-        // Full topic path example: "/powertrain/engine/temperature"
-        // We need just the last segment for the API: "temperature"
-        const topicSegments = topic.topic.split('/').filter((s) => s);
-        const topicName = topicSegments[topicSegments.length - 1] || topic.topic;
+        // Use the full topic path for the API, but strip leading slash for cleaner URL
+        // The backend adds it back if needed
+        const topicName = topic.topic.startsWith('/') ? topic.topic.slice(1) : topic.topic;
 
         // Validate and get data to publish
         let dataToPublish: unknown;
@@ -158,7 +165,7 @@ export function TopicPublishForm({ topic, componentId, client, initialValue, onV
 
         setIsPublishing(true);
         try {
-            await client.publishToComponentTopic(componentId, topicName, {
+            await client.publishToEntityData(entityType, componentId, topicName, {
                 type: messageType,
                 data: dataToPublish,
             });
@@ -197,7 +204,7 @@ export function TopicPublishForm({ topic, componentId, client, initialValue, onV
     return (
         <div className="space-y-4">
             {/* View mode toggle - only show if we have schema */}
-            {hasSchema && (
+            {hasSchema ? (
                 <div className="flex items-center gap-2">
                     <Button
                         type="button"
@@ -220,6 +227,14 @@ export function TopicPublishForm({ topic, componentId, client, initialValue, onV
                         JSON
                     </Button>
                     {topic.type && <span className="text-xs text-muted-foreground ml-auto">{topic.type}</span>}
+                </div>
+            ) : (
+                <div className="text-xs text-muted-foreground">
+                    {topic.type ? (
+                        <span>Type: {topic.type} (schema not available)</span>
+                    ) : (
+                        <span>Message type unknown - topic may not exist on ROS 2 graph yet</span>
+                    )}
                 </div>
             )}
 

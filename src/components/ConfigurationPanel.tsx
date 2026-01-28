@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useShallow } from 'zustand/shallow';
 import { Settings, Loader2, RefreshCw, Lock, Save, X, RotateCcw } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -7,13 +7,14 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useAppStore, type AppState } from '@/lib/store';
 import type { Parameter, ParameterType } from '@/lib/types';
+import type { SovdResourceEntityType } from '@/lib/sovd-api';
 
 interface ConfigurationPanelProps {
     componentId: string;
     /** Optional parameter name to highlight */
     highlightParam?: string;
     /** Entity type for API calls */
-    entityType?: 'components' | 'apps';
+    entityType?: SovdResourceEntityType;
 }
 
 /**
@@ -286,13 +287,16 @@ export function ConfigurationPanel({
 
     const [isResettingAll, setIsResettingAll] = useState(false);
     const parameters = configurations.get(componentId) || [];
+    const prevComponentIdRef = useRef<string | null>(null);
 
-    // Fetch configurations on mount (lazy loading)
+    // Fetch configurations on mount and when componentId changes
     useEffect(() => {
-        if (!configurations.has(componentId)) {
+        // Always fetch if componentId changed, or if not yet loaded
+        if (prevComponentIdRef.current !== componentId || !configurations.has(componentId)) {
             fetchConfigurations(componentId, entityType);
         }
-    }, [componentId, configurations, fetchConfigurations, entityType]);
+        prevComponentIdRef.current = componentId;
+    }, [componentId, entityType, fetchConfigurations, configurations]);
 
     const handleRefresh = useCallback(() => {
         fetchConfigurations(componentId, entityType);

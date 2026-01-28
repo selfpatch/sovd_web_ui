@@ -4,6 +4,7 @@ import { Database, Zap, Settings, AlertTriangle, Loader2, MessageSquare, Clock }
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useAppStore } from '@/lib/store';
+import { ConfigurationPanel } from '@/components/ConfigurationPanel';
 import type { SovdResourceEntityType } from '@/lib/sovd-api';
 import type { ComponentTopic, Operation, Parameter, Fault } from '@/lib/types';
 
@@ -25,6 +26,8 @@ const RESOURCE_TABS: TabConfig[] = [
 interface EntityResourceTabsProps {
     entityId: string;
     entityType: SovdResourceEntityType;
+    /** Tree path for navigation (e.g., /server/root for areas) */
+    basePath?: string;
     onNavigate?: (path: string) => void;
 }
 
@@ -32,7 +35,7 @@ interface EntityResourceTabsProps {
  * Reusable component for displaying entity resources (data, operations, configurations, faults)
  * Works with areas, components, apps, and functions
  */
-export function EntityResourceTabs({ entityId, entityType, onNavigate }: EntityResourceTabsProps) {
+export function EntityResourceTabs({ entityId, entityType, basePath, onNavigate }: EntityResourceTabsProps) {
     const [activeTab, setActiveTab] = useState<ResourceTab>('data');
     const [isLoading, setIsLoading] = useState(false);
     const [data, setData] = useState<ComponentTopic[]>([]);
@@ -154,11 +157,13 @@ export function EntityResourceTabs({ entityId, entityType, onNavigate }: EntityR
                                             <div
                                                 key={`${item.topic}-${idx}`}
                                                 className="flex items-center gap-3 p-2.5 rounded-lg border hover:bg-accent/30 cursor-pointer"
-                                                onClick={() =>
-                                                    handleNavigate(
-                                                        `/${entityType}/${entityId}/data/${encodeURIComponent(item.topic)}`
-                                                    )
-                                                }
+                                                onClick={() => {
+                                                    // Use basePath for tree navigation, fallback to API path format
+                                                    const navPath = basePath
+                                                        ? `${basePath}/data/${encodeURIComponent(item.topic)}`
+                                                        : `/${entityType}/${entityId}/data/${encodeURIComponent(item.topic)}`;
+                                                    handleNavigate(navPath);
+                                                }}
                                             >
                                                 <MessageSquare className="w-4 h-4 text-blue-500 shrink-0" />
                                                 <span className="font-mono text-xs truncate flex-1">{item.topic}</span>
@@ -199,11 +204,12 @@ export function EntityResourceTabs({ entityId, entityType, onNavigate }: EntityR
                                             <div
                                                 key={op.name}
                                                 className="flex items-center gap-3 p-2.5 rounded-lg border hover:bg-accent/30 cursor-pointer"
-                                                onClick={() =>
-                                                    handleNavigate(
-                                                        `/${entityType}/${entityId}/operations/${encodeURIComponent(op.name)}`
-                                                    )
-                                                }
+                                                onClick={() => {
+                                                    const navPath = basePath
+                                                        ? `${basePath}/operations/${encodeURIComponent(op.name)}`
+                                                        : `/${entityType}/${entityId}/operations/${encodeURIComponent(op.name)}`;
+                                                    handleNavigate(navPath);
+                                                }}
                                             >
                                                 {op.kind === 'service' ? (
                                                     <Zap className="w-4 h-4 text-amber-500 shrink-0" />
@@ -224,41 +230,7 @@ export function EntityResourceTabs({ entityId, entityType, onNavigate }: EntityR
 
                     {/* Configurations Tab */}
                     {activeTab === 'configurations' && (
-                        <Card>
-                            <CardHeader className="pb-3">
-                                <CardTitle className="text-base flex items-center gap-2">
-                                    <Settings className="w-4 h-4 text-violet-500" />
-                                    Configurations
-                                </CardTitle>
-                                <CardDescription>Parameters from child entities</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                {configurations.length === 0 ? (
-                                    <div className="text-center text-muted-foreground py-4">
-                                        <Settings className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                                        <p className="text-sm">No configurations available.</p>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2 max-h-80 overflow-y-auto">
-                                        {configurations.map((param) => (
-                                            <div
-                                                key={param.name}
-                                                className="flex items-center gap-3 p-2.5 rounded-lg border"
-                                            >
-                                                <Settings className="w-4 h-4 text-violet-500 shrink-0" />
-                                                <span className="font-mono text-xs truncate flex-1">{param.name}</span>
-                                                <Badge variant="outline" className="text-xs shrink-0">
-                                                    {param.type}
-                                                </Badge>
-                                                <span className="font-mono text-xs text-muted-foreground truncate max-w-24">
-                                                    {String(param.value)}
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
+                        <ConfigurationPanel componentId={entityId} entityType={entityType} />
                     )}
 
                     {/* Faults Tab */}

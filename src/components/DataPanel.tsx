@@ -6,15 +6,17 @@ import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { JsonFormViewer } from '@/components/JsonFormViewer';
 import { TopicPublishForm } from '@/components/TopicPublishForm';
-import type { ComponentTopic, TopicEndpoint, QosProfile } from '@/lib/types';
+import type { ComponentTopic, TopicEndpoint, QosProfile, SovdResourceEntityType } from '@/lib/types';
 import type { SovdApiClient } from '@/lib/sovd-api';
 import { cn } from '@/lib/utils';
 
-interface TopicDiagnosticsPanelProps {
-    /** Topic data from the API */
+interface DataPanelProps {
+    /** Data item from the API */
     topic: ComponentTopic;
-    /** Component ID for publishing */
+    /** Entity ID for publishing */
     componentId: string;
+    /** Entity type for API endpoint */
+    entityType?: SovdResourceEntityType;
     /** API client for publishing */
     client: SovdApiClient | null;
     /** Whether a refresh is in progress */
@@ -188,15 +190,16 @@ function QosDetails({ publishers, subscribers }: { publishers?: TopicEndpoint[];
 }
 
 /**
- * TopicDiagnosticsPanel - Full diagnostic view for a topic
+ * DataPanel - Full diagnostic view for a data item
  */
-export function TopicDiagnosticsPanel({
+export function DataPanel({
     topic,
     componentId,
+    entityType = 'components',
     client,
     isRefreshing = false,
     onRefresh,
-}: TopicDiagnosticsPanelProps) {
+}: DataPanelProps) {
     const [publishValue, setPublishValue] = useState<unknown>(topic.type_info?.default_value || topic.data || {});
 
     const hasData = topic.status === 'data' && topic.data !== null && topic.data !== undefined;
@@ -223,9 +226,7 @@ export function TopicDiagnosticsPanel({
                                     </span>
                                 )}
                             </div>
-                            <CardDescription className="text-xs mt-1">
-                                Topic diagnostics and data access
-                            </CardDescription>
+                            <CardDescription className="text-xs mt-1">Data diagnostics and access</CardDescription>
                         </div>
                     </div>
                     <Button variant="outline" size="sm" onClick={onRefresh} disabled={isRefreshing}>
@@ -278,6 +279,7 @@ export function TopicDiagnosticsPanel({
                         <TopicPublishForm
                             topic={topic}
                             componentId={componentId}
+                            entityType={entityType}
                             client={client}
                             initialValue={publishValue}
                             onValueChange={setPublishValue}
@@ -289,4 +291,4 @@ export function TopicDiagnosticsPanel({
     );
 }
 
-export default TopicDiagnosticsPanel;
+export default DataPanel;

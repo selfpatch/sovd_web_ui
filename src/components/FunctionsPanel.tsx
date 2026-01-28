@@ -15,6 +15,7 @@ import {
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useAppStore } from '@/lib/store';
+import { ConfigurationPanel } from '@/components/ConfigurationPanel';
 import type { ComponentTopic, Operation, Parameter, Fault } from '@/lib/types';
 
 /** Host app object returned from /functions/{id}/hosts */
@@ -323,22 +324,29 @@ export function FunctionsPanel({ functionId, functionName, description, path, on
                             </div>
                         ) : (
                             <div className="space-y-2">
-                                {topics.map((topic, idx) => (
-                                    <div
-                                        key={`${topic.topic}-${idx}`}
-                                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50"
-                                    >
-                                        <Badge variant="outline" className="text-blue-600 border-blue-300">
-                                            topic
-                                        </Badge>
-                                        <span className="font-mono text-sm truncate flex-1">{topic.topic}</span>
-                                        {topic.type && (
-                                            <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                                                {topic.type}
-                                            </span>
-                                        )}
-                                    </div>
-                                ))}
+                                {topics.map((topic, idx) => {
+                                    const cleanName = topic.topic.startsWith('/') ? topic.topic.slice(1) : topic.topic;
+                                    const encodedName = encodeURIComponent(cleanName);
+                                    const topicPath = `${path}/data/${encodedName}`;
+                                    return (
+                                        <div
+                                            key={topic.uniqueKey || `${topic.topic}-${idx}`}
+                                            className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50 cursor-pointer group"
+                                            onClick={() => handleResourceClick(topicPath)}
+                                        >
+                                            <Badge variant="outline" className="text-blue-600 border-blue-300">
+                                                topic
+                                            </Badge>
+                                            <span className="font-mono text-sm truncate flex-1">{topic.topic}</span>
+                                            {topic.type && (
+                                                <span className="text-xs text-muted-foreground truncate max-w-[200px]">
+                                                    {topic.type}
+                                                </span>
+                                            )}
+                                            <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100" />
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
                     </CardContent>
@@ -391,43 +399,7 @@ export function FunctionsPanel({ functionId, functionName, description, path, on
                 </Card>
             )}
 
-            {activeTab === 'configurations' && (
-                <Card>
-                    <CardHeader className="pb-3">
-                        <CardTitle className="text-base flex items-center gap-2">
-                            <Settings className="w-4 h-4 text-violet-500" />
-                            Configurations
-                        </CardTitle>
-                        <CardDescription>Parameters from all host apps</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        {configurations.length === 0 ? (
-                            <div className="text-center text-muted-foreground py-4">
-                                <Settings className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                                <p className="text-sm">No configurations available.</p>
-                            </div>
-                        ) : (
-                            <div className="space-y-2">
-                                {configurations.map((param) => (
-                                    <div
-                                        key={param.name}
-                                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50"
-                                    >
-                                        <Settings className="w-4 h-4 text-violet-500 shrink-0" />
-                                        <span className="font-mono text-sm truncate flex-1">{param.name}</span>
-                                        <Badge variant="outline" className="text-xs shrink-0">
-                                            {param.type}
-                                        </Badge>
-                                        <span className="font-mono text-xs text-muted-foreground truncate max-w-24">
-                                            {String(param.value)}
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            )}
+            {activeTab === 'configurations' && <ConfigurationPanel componentId={functionId} entityType="functions" />}
 
             {activeTab === 'faults' && (
                 <Card>

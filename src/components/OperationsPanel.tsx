@@ -32,6 +32,7 @@ import { ActionStatusPanel } from './ActionStatusPanel';
 import { SchemaForm } from './SchemaFormField';
 import { getSchemaDefaults } from '@/lib/schema-utils';
 import { OperationResponseDisplay } from './OperationResponse';
+import type { SovdResourceEntityType } from '@/lib/sovd-api';
 
 /** History entry for an operation invocation */
 interface OperationHistoryEntry {
@@ -46,7 +47,7 @@ interface OperationsPanelProps {
     /** Optional: highlight and auto-expand a specific operation */
     highlightOperation?: string;
     /** Entity type for API calls */
-    entityType?: 'components' | 'apps';
+    entityType?: SovdResourceEntityType;
 }
 
 /**

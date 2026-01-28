@@ -6,11 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAppStore, type AppState } from '@/lib/store';
 import type { Fault, FaultSeverity, FaultStatus } from '@/lib/types';
+import type { SovdResourceEntityType } from '@/lib/sovd-api';
 
 interface FaultsPanelProps {
     componentId: string;
-    /** Type of entity: 'components' or 'apps' */
-    entityType?: 'components' | 'apps';
+    /** Type of entity */
+    entityType?: SovdResourceEntityType;
 }
 
 /**

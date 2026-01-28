@@ -224,7 +224,7 @@ export function AreasPanel({ areaId, areaName, path }: AreasPanelProps) {
                 </Card>
             )}
 
-            {activeTab === 'resources' && <EntityResourceTabs entityId={areaId} entityType="areas" />}
+            {activeTab === 'resources' && <EntityResourceTabs entityId={areaId} entityType="areas" basePath={path} />}
         </div>
     );
 }
