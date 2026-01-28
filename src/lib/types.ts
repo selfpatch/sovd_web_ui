@@ -3,6 +3,11 @@
  */
 
 /**
+ * SOVD Resource Entity Type for API endpoints
+ */
+export type SovdResourceEntityType = 'areas' | 'components' | 'apps' | 'functions';
+
+/**
  * QoS profile for a topic endpoint
  */
 export interface QosProfile {
@@ -155,11 +160,11 @@ export interface ComponentTopic {
 }
 
 /**
- * API response for data item (topic) from GET /components/{id}/data/{topic}
+ * API response for data item from GET /components/{id}/data/{dataId}
  * This is the raw response structure from the gateway API.
  */
 export interface DataItemResponse {
-    /** Topic data payload */
+    /** Data payload */
     data: unknown;
     /** Item identifier */
     id: string;
@@ -174,6 +179,15 @@ export interface DataItemResponse {
         status?: string;
         publisher_count?: number;
         subscriber_count?: number;
+        /** Publisher endpoint information */
+        publishers?: TopicEndpoint[];
+        /** Subscriber endpoint information */
+        subscribers?: TopicEndpoint[];
+        /** Type information including schema (JSON schema for message fields) */
+        type_info?: {
+            schema?: Record<string, unknown>;
+            default_value?: unknown;
+        };
     };
 }
 

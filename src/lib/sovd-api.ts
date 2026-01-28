@@ -12,6 +12,7 @@ import type {
     ResetAllConfigurationsResponse,
     Operation,
     DataItemResponse,
+    Parameter,
     // New SOVD-compliant types
     Execution,
     CreateExecutionRequest,
@@ -29,10 +30,23 @@ import type {
     ServerCapabilities,
     VersionInfo,
     SovdError,
+    SovdResourceEntityType,
 } from './types';
+import { convertJsonSchemaToTopicSchema } from './schema-utils';
 
-/** Entity types that support resource collections (data, operations, configurations, faults) */
-export type SovdResourceEntityType = 'areas' | 'components' | 'apps' | 'functions';
+// Re-export SovdResourceEntityType for convenience
+export type { SovdResourceEntityType };
+
+/** Resource collection types available on entities */
+export type ResourceCollectionType = 'data' | 'operations' | 'configurations' | 'faults';
+
+/** Map of resource types to their list result types */
+export interface ResourceListResults {
+    data: ComponentTopic[];
+    operations: Operation[];
+    configurations: ComponentConfigurations;
+    faults: ListFaultsResponse;
+}
 
 /**
  * Helper to unwrap items from SOVD API response
@@ -112,6 +126,15 @@ function normalizeBasePath(path: string): string {
 }
 
 /**
+ * Strip direction suffix (:publish, :subscribe, :both) from topic name
+ * The frontend adds these suffixes to uniqueKey for UI purposes,
+ * but the API expects the original topic ID without the suffix.
+ */
+function stripDirectionSuffix(topicName: string): string {
+    return topicName.replace(/:(publish|subscribe|both)$/, '');
+}
+
+/**
  * SOVD API Client for discovery endpoints
  */
 export class SovdApiClient {
@@ -152,6 +175,154 @@ export class SovdApiClient {
             return false;
         }
     }
+
+    // ===========================================================================
+    // GENERIC RESOURCE API (unified entry point for all resource collections)
+    // ===========================================================================
+
+    /**
+     * Generic method to fetch any resource collection for any entity type.
+     * This is the single entry point for all resource operations to ensure consistency.
+     *
+     * @param entityType The type of entity (areas, components, apps, functions)
+     * @param entityId The entity identifier
+     * @param resourceType The resource collection type (data, operations, configurations, faults)
+     * @returns The resource collection with appropriate type
+     */
+    async getResources<T extends ResourceCollectionType>(
+        entityType: SovdResourceEntityType,
+        entityId: string,
+        resourceType: T
+    ): Promise<ResourceListResults[T]> {
+        const response = await fetchWithTimeout(this.getUrl(`${entityType}/${entityId}/${resourceType}`), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                // Return empty collection for 404
+                return this.emptyResourceResult(resourceType);
+            }
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const rawData = await response.json();
+        return this.transformResourceData(resourceType, rawData, entityId);
+    }
+
+    /**
+     * Get empty result for a resource type (used for 404 responses)
+     */
+    private emptyResourceResult<T extends ResourceCollectionType>(resourceType: T): ResourceListResults[T] {
+        const results: ResourceListResults = {
+            data: [],
+            operations: [],
+            configurations: { component_id: '', node_name: '', parameters: [] },
+            faults: { items: [], count: 0 },
+        };
+        return results[resourceType] as ResourceListResults[T];
+    }
+
+    /**
+     * Transform raw API response to typed resource collection
+     */
+    private transformResourceData<T extends ResourceCollectionType>(
+        resourceType: T,
+        rawData: unknown,
+        entityId: string
+    ): ResourceListResults[T] {
+        switch (resourceType) {
+            case 'data':
+                return this.transformDataResponse(rawData) as ResourceListResults[T];
+            case 'operations':
+                return unwrapItems<Operation>(rawData) as ResourceListResults[T];
+            case 'configurations':
+                return this.transformConfigurationsResponse(rawData, entityId) as ResourceListResults[T];
+            case 'faults':
+                return this.transformFaultsResponse(rawData) as ResourceListResults[T];
+            default:
+                throw new Error(`Unknown resource type: ${resourceType}`);
+        }
+    }
+
+    /**
+     * Transform data API response to ComponentTopic[]
+     */
+    private transformDataResponse(rawData: unknown): ComponentTopic[] {
+        interface DataItem {
+            id: string;
+            name: string;
+            category?: string;
+            'x-medkit'?: {
+                ros2?: { topic?: string; type?: string; direction?: string };
+                type_info?: { schema?: unknown; default_value?: unknown };
+            };
+        }
+        const dataItems = unwrapItems<DataItem>(rawData);
+        return dataItems.map((item) => {
+            const rawTypeInfo = item['x-medkit']?.type_info;
+            const convertedSchema = rawTypeInfo?.schema
+                ? convertJsonSchemaToTopicSchema(rawTypeInfo.schema)
+                : undefined;
+            const direction = item['x-medkit']?.ros2?.direction;
+            const topicName = item.name || item['x-medkit']?.ros2?.topic || item.id;
+            return {
+                topic: topicName,
+                timestamp: Date.now() * 1000000,
+                data: null,
+                status: 'metadata_only' as const,
+                type: item['x-medkit']?.ros2?.type,
+                type_info: convertedSchema
+                    ? {
+                          schema: convertedSchema,
+                          default_value: rawTypeInfo?.default_value as Record<string, unknown>,
+                      }
+                    : undefined,
+                // Direction-based fields for apps/functions
+                isPublisher: direction === 'publish' || direction === 'both',
+                isSubscriber: direction === 'subscribe' || direction === 'both',
+                uniqueKey: direction ? `${topicName}:${direction}` : topicName,
+            };
+        });
+    }
+
+    /**
+     * Transform configurations API response to ComponentConfigurations
+     */
+    private transformConfigurationsResponse(rawData: unknown, entityId: string): ComponentConfigurations {
+        const data = rawData as {
+            'x-medkit'?: {
+                entity_id?: string;
+                ros2?: { node?: string };
+                parameters?: Parameter[];
+            };
+        };
+        const xMedkit = data['x-medkit'] || {};
+        return {
+            component_id: xMedkit.entity_id || entityId,
+            node_name: xMedkit.ros2?.node || entityId,
+            parameters: xMedkit.parameters || [],
+        };
+    }
+
+    /**
+     * Transform faults API response to ListFaultsResponse
+     */
+    private transformFaultsResponse(rawData: unknown): ListFaultsResponse {
+        const data = rawData as {
+            items?: unknown[];
+            'x-medkit'?: { count?: number };
+        };
+        const items = (data.items || []).map((f: unknown) =>
+            this.transformFault(f as Parameters<typeof this.transformFault>[0])
+        );
+        return { items, count: data['x-medkit']?.count || items.length };
+    }
+
+    // ===========================================================================
+    // ENTITY TREE NAVIGATION
+    // ===========================================================================
 
     /**
      * Get root entities or children of a specific path
@@ -268,98 +439,60 @@ export class SovdApiClient {
      * @param path Entity path (e.g., "/area/component")
      */
     async getEntityDetails(path: string): Promise<SovdEntityDetails> {
-        // Path comes from the tree, e.g. "/area_id/component_id"
-        const parts = path.split('/').filter((p) => p);
+        // Path comes from the tree, e.g. "/server/area_id/component_id" or "/area_id/component_id"
+        let parts = path.split('/').filter((p) => p);
 
-        // Handle virtual folder paths: /area/component/data/topic or /area/component/apps/app/data/topic
-        // Transform to: components/{component}/data/{topic} or apps/{app}/data/{topic} for API call
-        if (parts.length >= 4 && parts.includes('data')) {
+        // Remove 'server' prefix if present (tree paths start with /server)
+        if (parts[0] === 'server') {
+            parts = parts.slice(1);
+        }
+
+        // Handle virtual folder paths with /data/
+        // Patterns:
+        //   /area/data/topic → areas/{area}/data/{topic}
+        //   /area/component/data/topic → components/{component}/data/{topic}
+        //   /area/component/apps/app/data/topic → apps/{app}/data/{topic}
+        //   /functions/function/data/topic → functions/{function}/data/{topic}
+        if (parts.includes('data')) {
             const dataIndex = parts.indexOf('data');
-            // Check if this is an app topic (path contains 'apps' before 'data')
+            const topicName = parts[dataIndex + 1];
+
+            if (!topicName) {
+                throw new Error('Invalid path: missing topic name after /data/');
+            }
+
+            const decodedTopicName = decodeURIComponent(topicName);
+
+            // Determine entity type and ID based on path structure
+            let entityType: SovdResourceEntityType;
+            let entityId: string;
+
             const appsIndex = parts.indexOf('apps');
-            const isAppTopic = appsIndex !== -1 && appsIndex < dataIndex;
+            const functionsIndex = parts.indexOf('functions');
 
-            if (isAppTopic && dataIndex >= 2) {
+            if (appsIndex !== -1 && appsIndex < dataIndex) {
                 // App topic: /area/component/apps/app/data/topic
-                const appId = parts[appsIndex + 1]!;
-                const encodedTopicName = parts[dataIndex + 1]!;
-                const decodedTopicName = decodeURIComponent(encodedTopicName);
-
-                const response = await fetchWithTimeout(this.getUrl(`apps/${appId}/data/${encodedTopicName}`), {
-                    method: 'GET',
-                    headers: { Accept: 'application/json' },
-                });
-
-                if (!response.ok) {
-                    if (response.status === 404) {
-                        throw new Error(`Topic ${decodedTopicName} not found for app ${appId}`);
-                    }
-                    throw new Error(`HTTP ${response.status}`);
-                }
-
-                // API returns {data, id, x-medkit: {ros2: {type, topic, direction}, ...}}
-                const item = (await response.json()) as DataItemResponse;
-                const xMedkit = item['x-medkit'];
-                const ros2 = xMedkit?.ros2;
-
-                const topic: ComponentTopic = {
-                    topic: ros2?.topic || `/${decodedTopicName}`,
-                    timestamp: xMedkit?.timestamp || Date.now() * 1000000,
-                    data: item.data,
-                    status: (xMedkit?.status as 'data' | 'metadata_only') || 'data',
-                    type: ros2?.type,
-                    publisher_count: xMedkit?.publisher_count,
-                    subscriber_count: xMedkit?.subscriber_count,
-                    isPublisher: ros2?.direction === 'publish',
-                    isSubscriber: ros2?.direction === 'subscribe',
-                };
-
-                return {
-                    id: encodedTopicName,
-                    name: topic.topic,
-                    href: path,
-                    topicData: topic,
-                    rosType: topic.type,
-                    type: 'topic',
-                };
+                entityType = 'apps';
+                entityId = parts[appsIndex + 1]!;
+            } else if (functionsIndex !== -1 && functionsIndex < dataIndex) {
+                // Function topic: /functions/function/data/topic
+                entityType = 'functions';
+                entityId = parts[functionsIndex + 1]!;
+            } else if (dataIndex === 1) {
+                // Area topic: /area/data/topic (dataIndex is 1, meaning only area before data)
+                entityType = 'areas';
+                entityId = parts[0]!;
+            } else {
+                // Component topic: /area/component/data/topic (dataIndex is 2+)
+                entityType = 'components';
+                entityId = parts[dataIndex - 1]!;
             }
 
-            // Component topic: /area/component/data/topic
-            const componentId = parts[1]!;
-            const encodedTopicName = parts[dataIndex + 1]!;
-            const decodedTopicName = decodeURIComponent(encodedTopicName);
-
-            const response = await fetchWithTimeout(this.getUrl(`components/${componentId}/data/${encodedTopicName}`), {
-                method: 'GET',
-                headers: { Accept: 'application/json' },
-            });
-
-            if (!response.ok) {
-                if (response.status === 404) {
-                    throw new Error(`Topic ${decodedTopicName} not found for component ${componentId}`);
-                }
-                throw new Error(`HTTP ${response.status}`);
-            }
-
-            // API returns {data, id, x-medkit: {ros2: {type, topic, direction}, ...}}
-            const item = (await response.json()) as DataItemResponse;
-            const xMedkit = item['x-medkit'];
-            const ros2 = xMedkit?.ros2;
-
-            const topic: ComponentTopic = {
-                topic: ros2?.topic || `/${decodedTopicName}`,
-                timestamp: xMedkit?.timestamp || Date.now() * 1000000,
-                data: item.data,
-                status: (xMedkit?.status as 'data' | 'metadata_only') || 'data',
-                type: ros2?.type,
-                publisher_count: xMedkit?.publisher_count,
-                subscriber_count: xMedkit?.subscriber_count,
-                isPublisher: ros2?.direction === 'publish',
-                isSubscriber: ros2?.direction === 'subscribe',
-            };
+            // Use the generic getTopicDetails method
+            const topic = await this.getTopicDetails(entityType, entityId, decodedTopicName);
 
             return {
-                id: encodedTopicName,
+                id: topicName,
                 name: topic.topic,
                 href: path,
                 topicData: topic,
@@ -377,36 +510,8 @@ export class SovdApiClient {
             // e.g., 'powertrain%2Fengine%2Ftemp' -> 'powertrain/engine/temp'
             const decodedTopicName = decodeURIComponent(encodedTopicName);
 
-            // Use the dedicated single-topic endpoint
-            // The REST API expects percent-encoded topic name in the URL
-            const response = await fetchWithTimeout(this.getUrl(`components/${componentId}/data/${encodedTopicName}`), {
-                method: 'GET',
-                headers: { Accept: 'application/json' },
-            });
-
-            if (!response.ok) {
-                if (response.status === 404) {
-                    throw new Error(`Topic ${decodedTopicName} not found for component ${componentId}`);
-                }
-                throw new Error(`HTTP ${response.status}`);
-            }
-
-            // API returns {data, id, x-medkit: {ros2: {type, topic, direction}, ...}}
-            const item = (await response.json()) as DataItemResponse;
-            const xMedkit = item['x-medkit'];
-            const ros2 = xMedkit?.ros2;
-
-            const topic: ComponentTopic = {
-                topic: ros2?.topic || `/${decodedTopicName}`,
-                timestamp: xMedkit?.timestamp || Date.now() * 1000000,
-                data: item.data,
-                status: (xMedkit?.status as 'data' | 'metadata_only') || 'data',
-                type: ros2?.type,
-                publisher_count: xMedkit?.publisher_count,
-                subscriber_count: xMedkit?.subscriber_count,
-                isPublisher: ros2?.direction === 'publish',
-                isSubscriber: ros2?.direction === 'subscribe',
-            };
+            // Use the generic getTopicDetails method
+            const topic = await this.getTopicDetails('components', componentId, decodedTopicName);
 
             return {
                 id: encodedTopicName,
@@ -426,7 +531,8 @@ export class SovdApiClient {
             });
 
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const topicsData = unwrapItems<ComponentTopic>(await response.json());
+            // Use the proper transformation to convert API format to ComponentTopic[]
+            const topicsData = this.transformDataResponse(await response.json());
 
             // Build topicsInfo from fetched data for navigation
             // AND keep full topics array for detailed view (QoS, publishers, etc.)
@@ -465,18 +571,20 @@ export class SovdApiClient {
     }
 
     /**
-     * Publish to a component topic
-     * @param componentId Component ID
-     * @param topicName Topic name (relative to component namespace)
+     * Publish to entity data (generic for components, apps, functions, areas)
+     * @param entityType Entity type (components, apps, functions, areas)
+     * @param entityId Entity ID
+     * @param topicName Topic name (full path without leading slash)
      * @param request Publish request with type and data
      */
-    async publishToComponentTopic(
-        componentId: string,
+    async publishToEntityData(
+        entityType: SovdResourceEntityType,
+        entityId: string,
         topicName: string,
         request: ComponentTopicPublishRequest
     ): Promise<void> {
         const response = await fetchWithTimeout(
-            this.getUrl(`components/${componentId}/data/${topicName}`),
+            this.getUrl(`${entityType}/${entityId}/data/${topicName}`),
             {
                 method: 'PUT',
                 headers: {
@@ -542,40 +650,19 @@ export class SovdApiClient {
         entityId: string,
         entityType: SovdResourceEntityType = 'components'
     ): Promise<ComponentConfigurations> {
-        const response = await fetchWithTimeout(this.getUrl(`${entityType}/${entityId}/configurations`), {
-            method: 'GET',
-            headers: { Accept: 'application/json' },
-        });
-
-        if (!response.ok) {
-            const errorData = (await response.json().catch(() => ({}))) as {
-                error?: string;
-                details?: string;
-            };
-            throw new Error(errorData.error || errorData.details || `HTTP ${response.status}`);
-        }
-
-        const data = await response.json();
-        // API returns {items: [...], x-medkit: {parameters: [...]}}
-        // Transform to ComponentConfigurations format
-        const xMedkit = data['x-medkit'] || {};
-        return {
-            component_id: xMedkit.entity_id || entityId,
-            node_name: xMedkit.ros2?.node || entityId,
-            parameters: xMedkit.parameters || [],
-        };
+        return this.getResources(entityType, entityId, 'configurations');
     }
 
     /**
      * Get a specific configuration (parameter) value and metadata
-     * @param entityId Entity ID (component or app)
+     * @param entityId Entity ID
      * @param paramName Parameter name
-     * @param entityType Entity type ('components' or 'apps')
+     * @param entityType Entity type
      */
     async getConfiguration(
         entityId: string,
         paramName: string,
-        entityType: 'components' | 'apps' = 'components'
+        entityType: SovdResourceEntityType = 'components'
     ): Promise<ConfigurationDetail> {
         const response = await fetchWithTimeout(
             this.getUrl(`${entityType}/${entityId}/configurations/${encodeURIComponent(paramName)}`),
@@ -598,16 +685,16 @@ export class SovdApiClient {
 
     /**
      * Set a configuration (parameter) value
-     * @param entityId Entity ID (component or app)
+     * @param entityId Entity ID
      * @param paramName Parameter name
      * @param request Request with new value
-     * @param entityType Entity type ('components' or 'apps')
+     * @param entityType Entity type
      */
     async setConfiguration(
         entityId: string,
         paramName: string,
         request: SetConfigurationRequest,
-        entityType: 'components' | 'apps' = 'components'
+        entityType: SovdResourceEntityType = 'components'
     ): Promise<SetConfigurationResponse> {
         const response = await fetchWithTimeout(
             this.getUrl(`${entityType}/${entityId}/configurations/${encodeURIComponent(paramName)}`),
@@ -634,14 +721,14 @@ export class SovdApiClient {
 
     /**
      * Reset a configuration (parameter) to its default value
-     * @param entityId Entity ID (component or app)
+     * @param entityId Entity ID
      * @param paramName Parameter name
-     * @param entityType Entity type ('components' or 'apps')
+     * @param entityType Entity type
      */
     async resetConfiguration(
         entityId: string,
         paramName: string,
-        entityType: 'components' | 'apps' = 'components'
+        entityType: SovdResourceEntityType = 'components'
     ): Promise<ResetConfigurationResponse> {
         const response = await fetchWithTimeout(
             this.getUrl(`${entityType}/${entityId}/configurations/${encodeURIComponent(paramName)}`),
@@ -661,17 +748,19 @@ export class SovdApiClient {
             throw new Error(errorData.error || errorData.details || `HTTP ${response.status}`);
         }
 
-        return await response.json();
+        // 204 No Content means success - return the response body or defaults
+        const data = await response.json().catch(() => ({}));
+        return data as ResetConfigurationResponse;
     }
 
     /**
      * Reset all configurations for an entity to their default values
-     * @param entityId Entity ID (component or app)
-     * @param entityType Entity type ('components' or 'apps')
+     * @param entityId Entity ID
+     * @param entityType Entity type
      */
     async resetAllConfigurations(
         entityId: string,
-        entityType: 'components' | 'apps' = 'components'
+        entityType: SovdResourceEntityType = 'components'
     ): Promise<ResetAllConfigurationsResponse> {
         const response = await fetchWithTimeout(this.getUrl(`${entityType}/${entityId}/configurations`), {
             method: 'DELETE',
@@ -702,31 +791,19 @@ export class SovdApiClient {
      * @param entityId Entity ID
      */
     async listOperations(entityId: string, entityType: SovdResourceEntityType = 'components'): Promise<Operation[]> {
-        const response = await fetchWithTimeout(this.getUrl(`${entityType}/${entityId}/operations`), {
-            method: 'GET',
-            headers: { Accept: 'application/json' },
-        });
-
-        if (!response.ok) {
-            if (response.status === 404) {
-                return [];
-            }
-            throw new Error(`HTTP ${response.status}`);
-        }
-
-        return unwrapItems<Operation>(await response.json());
+        return this.getResources(entityType, entityId, 'operations');
     }
 
     /**
      * Get details of a specific operation
      * @param entityId Entity ID
      * @param operationName Operation name
-     * @param entityType Entity type ('components' or 'apps')
+     * @param entityType Entity type
      */
     async getOperation(
         entityId: string,
         operationName: string,
-        entityType: 'components' | 'apps' = 'components'
+        entityType: SovdResourceEntityType = 'components'
     ): Promise<Operation> {
         const response = await fetchWithTimeout(
             this.getUrl(`${entityType}/${entityId}/operations/${encodeURIComponent(operationName)}`),
@@ -749,13 +826,13 @@ export class SovdApiClient {
      * @param entityId Entity ID (component or app)
      * @param operationName Operation name
      * @param request Execution request with input data
-     * @param entityType Entity type ('components' or 'apps')
+     * @param entityType Entity type
      */
     async createExecution(
         entityId: string,
         operationName: string,
         request: CreateExecutionRequest,
-        entityType: 'components' | 'apps' = 'components'
+        entityType: SovdResourceEntityType = 'components'
     ): Promise<CreateExecutionResponse> {
         const response = await fetchWithTimeout(
             this.getUrl(`${entityType}/${entityId}/operations/${encodeURIComponent(operationName)}/executions`),
@@ -782,12 +859,12 @@ export class SovdApiClient {
      * List all executions for an operation
      * @param entityId Entity ID
      * @param operationName Operation name
-     * @param entityType Entity type ('components' or 'apps')
+     * @param entityType Entity type
      */
     async listExecutions(
         entityId: string,
         operationName: string,
-        entityType: 'components' | 'apps' = 'components'
+        entityType: SovdResourceEntityType = 'components'
     ): Promise<ListExecutionsResponse> {
         const response = await fetchWithTimeout(
             this.getUrl(`${entityType}/${entityId}/operations/${encodeURIComponent(operationName)}/executions`),
@@ -810,13 +887,13 @@ export class SovdApiClient {
      * @param entityId Entity ID
      * @param operationName Operation name
      * @param executionId Execution ID
-     * @param entityType Entity type ('components' or 'apps')
+     * @param entityType Entity type
      */
     async getExecution(
         entityId: string,
         operationName: string,
         executionId: string,
-        entityType: 'components' | 'apps' = 'components'
+        entityType: SovdResourceEntityType = 'components'
     ): Promise<Execution> {
         const response = await fetchWithTimeout(
             this.getUrl(
@@ -841,13 +918,13 @@ export class SovdApiClient {
      * @param entityId Entity ID
      * @param operationName Operation name
      * @param executionId Execution ID
-     * @param entityType Entity type ('components' or 'apps')
+     * @param entityType Entity type
      */
     async cancelExecution(
         entityId: string,
         operationName: string,
         executionId: string,
-        entityType: 'components' | 'apps' = 'components'
+        entityType: SovdResourceEntityType = 'components'
     ): Promise<Execution> {
         const response = await fetchWithTimeout(
             this.getUrl(
@@ -990,44 +1067,7 @@ export class SovdApiClient {
      * @param appId App identifier
      */
     async getAppData(appId: string): Promise<ComponentTopic[]> {
-        const response = await fetchWithTimeout(this.getUrl(`apps/${appId}/data`), {
-            method: 'GET',
-            headers: { Accept: 'application/json' },
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-
-        // API returns {items: [{id, name, category, x-medkit}]}
-        interface DataItem {
-            id: string;
-            name: string;
-            category?: string;
-            'x-medkit'?: { ros2?: { topic?: string; direction?: string; type?: string } };
-        }
-        const dataItems = unwrapItems<DataItem>(await response.json());
-
-        // Transform to ComponentTopic format
-        // NOTE: Same topic can appear twice with different directions (publish/subscribe)
-        // We include direction in the key to make them unique
-        return dataItems.map((item) => {
-            const topicName = item.name || item['x-medkit']?.ros2?.topic || item.id;
-            const direction = item['x-medkit']?.ros2?.direction;
-            const type = item['x-medkit']?.ros2?.type;
-            return {
-                topic: topicName,
-                timestamp: Date.now() * 1000000,
-                data: null,
-                status: 'metadata_only' as const,
-                // Include direction for unique key generation
-                isPublisher: direction === 'publish',
-                isSubscriber: direction === 'subscribe',
-                // Include unique key combining topic and direction
-                uniqueKey: direction ? `${topicName}:${direction}` : topicName,
-                type,
-            };
-        });
+        return this.getResources('apps', appId, 'data');
     }
 
     /**
@@ -1072,7 +1112,7 @@ export class SovdApiClient {
      */
     async publishToAppTopic(appId: string, topicName: string, request: ComponentTopicPublishRequest): Promise<void> {
         const response = await fetchWithTimeout(
-            this.getUrl(`apps/${appId}/data/${encodeURIComponent(topicName)}`),
+            this.getUrl(`apps/${appId}/data/${topicName}`),
             {
                 method: 'PUT',
                 headers: {
@@ -1170,16 +1210,7 @@ export class SovdApiClient {
      * @param functionId Function identifier
      */
     async getFunctionData(functionId: string): Promise<ComponentTopic[]> {
-        const response = await fetchWithTimeout(this.getUrl(`functions/${functionId}/data`), {
-            method: 'GET',
-            headers: { Accept: 'application/json' },
-        });
-
-        if (!response.ok) {
-            return [];
-        }
-
-        return unwrapItems<ComponentTopic>(await response.json());
+        return this.getResources('functions', functionId, 'data');
     }
 
     /**
@@ -1187,16 +1218,7 @@ export class SovdApiClient {
      * @param functionId Function identifier
      */
     async getFunctionOperations(functionId: string): Promise<Operation[]> {
-        const response = await fetchWithTimeout(this.getUrl(`functions/${functionId}/operations`), {
-            method: 'GET',
-            headers: { Accept: 'application/json' },
-        });
-
-        if (!response.ok) {
-            return [];
-        }
-
-        return unwrapItems<Operation>(await response.json());
+        return this.getResources('functions', functionId, 'operations');
     }
 
     // ===========================================================================
@@ -1210,39 +1232,65 @@ export class SovdApiClient {
      * @param entityId Entity identifier
      */
     async getEntityData(entityType: SovdResourceEntityType, entityId: string): Promise<ComponentTopic[]> {
-        const response = await fetchWithTimeout(this.getUrl(`${entityType}/${entityId}/data`), {
+        return this.getResources(entityType, entityId, 'data');
+    }
+
+    // ===========================================================================
+    // GENERIC TOPIC DETAILS (works for all entity types)
+    // ===========================================================================
+
+    /**
+     * Get topic details for any entity type (areas, components, apps, functions)
+     * @param entityType The type of entity
+     * @param entityId The entity identifier
+     * @param topicName The topic name (will strip direction suffix if present)
+     */
+    async getTopicDetails(
+        entityType: SovdResourceEntityType,
+        entityId: string,
+        topicName: string
+    ): Promise<ComponentTopic> {
+        // Strip direction suffix (:publish/:subscribe/:both) that frontend adds for unique keys
+        const cleanTopicName = stripDirectionSuffix(topicName);
+        const encodedTopicName = encodeURIComponent(cleanTopicName);
+
+        const response = await fetchWithTimeout(this.getUrl(`${entityType}/${entityId}/data/${encodedTopicName}`), {
             method: 'GET',
             headers: { Accept: 'application/json' },
         });
 
         if (!response.ok) {
-            if (response.status === 404) {
-                return [];
-            }
-            throw new Error(`HTTP ${response.status}`);
+            const errorData = (await response.json().catch(() => ({}))) as SovdError;
+            throw new Error(errorData.message || `HTTP ${response.status}`);
         }
 
-        // API returns {items: [{id, name, category, x-medkit}]} format
-        interface DataItem {
-            id: string;
-            name: string;
-            category?: string;
-            'x-medkit'?: {
-                ros2?: { topic?: string; type?: string; direction?: string };
-                type_info?: { schema?: Record<string, unknown> };
-            };
-        }
-        const dataItems = unwrapItems<DataItem>(await response.json());
+        // API returns {data, id, x-medkit: {ros2: {type, topic, direction}, type_info: {schema, default_value}, ...}}
+        const item = (await response.json()) as DataItemResponse;
+        const xMedkit = item['x-medkit'];
+        const ros2 = xMedkit?.ros2;
 
-        // Transform to ComponentTopic format
-        return dataItems.map((item) => ({
-            topic: item.name || item['x-medkit']?.ros2?.topic || item.id,
-            timestamp: Date.now() * 1000000,
-            data: null,
-            status: 'metadata_only' as const,
-            type: item['x-medkit']?.ros2?.type,
-            type_info: item['x-medkit']?.type_info,
-        }));
+        const rawTypeInfo = xMedkit?.type_info as { schema?: unknown; default_value?: unknown } | undefined;
+        const convertedSchema = rawTypeInfo?.schema ? convertJsonSchemaToTopicSchema(rawTypeInfo.schema) : undefined;
+
+        return {
+            topic: ros2?.topic || cleanTopicName,
+            timestamp: xMedkit?.timestamp || Date.now() * 1000000,
+            data: item.data,
+            status: (xMedkit?.status as 'data' | 'metadata_only') || 'data',
+            type: ros2?.type,
+            type_info: convertedSchema
+                ? {
+                      schema: convertedSchema,
+                      default_value: rawTypeInfo?.default_value as Record<string, unknown>,
+                  }
+                : undefined,
+            publisher_count: xMedkit?.publisher_count,
+            subscriber_count: xMedkit?.subscriber_count,
+            publishers: xMedkit?.publishers,
+            subscribers: xMedkit?.subscribers,
+            isPublisher: ros2?.direction === 'publish' || ros2?.direction === 'both',
+            isSubscriber: ros2?.direction === 'subscribe' || ros2?.direction === 'both',
+        };
     }
 
     // ===========================================================================
@@ -1335,32 +1383,16 @@ export class SovdApiClient {
      * @param entityId Entity identifier
      */
     async listEntityFaults(entityType: SovdResourceEntityType, entityId: string): Promise<ListFaultsResponse> {
-        const response = await fetchWithTimeout(this.getUrl(`${entityType}/${entityId}/faults`), {
-            method: 'GET',
-            headers: { Accept: 'application/json' },
-        });
-
-        if (!response.ok) {
-            if (response.status === 404) {
-                return { items: [], count: 0 };
-            }
-            throw new Error(`HTTP ${response.status}`);
-        }
-
-        const data = await response.json();
-        const items = (data.items || []).map((f: unknown) =>
-            this.transformFault(f as Parameters<typeof this.transformFault>[0])
-        );
-        return { items, count: data['x-medkit']?.count || items.length };
+        return this.getResources(entityType, entityId, 'faults');
     }
 
     /**
      * Get a specific fault by code
-     * @param entityType Entity type ('components' or 'apps')
+     * @param entityType Entity type
      * @param entityId Entity identifier
      * @param faultCode Fault code
      */
-    async getFault(entityType: 'components' | 'apps', entityId: string, faultCode: string): Promise<Fault> {
+    async getFault(entityType: SovdResourceEntityType, entityId: string, faultCode: string): Promise<Fault> {
         const response = await fetchWithTimeout(
             this.getUrl(`${entityType}/${entityId}/faults/${encodeURIComponent(faultCode)}`),
             {
@@ -1379,11 +1411,11 @@ export class SovdApiClient {
 
     /**
      * Clear a specific fault
-     * @param entityType Entity type ('components' or 'apps')
+     * @param entityType Entity type
      * @param entityId Entity identifier
      * @param faultCode Fault code
      */
-    async clearFault(entityType: 'components' | 'apps', entityId: string, faultCode: string): Promise<void> {
+    async clearFault(entityType: SovdResourceEntityType, entityId: string, faultCode: string): Promise<void> {
         const response = await fetchWithTimeout(
             this.getUrl(`${entityType}/${entityId}/faults/${encodeURIComponent(faultCode)}`),
             {
@@ -1400,10 +1432,10 @@ export class SovdApiClient {
 
     /**
      * Clear all faults for an entity
-     * @param entityType Entity type ('components' or 'apps')
+     * @param entityType Entity type
      * @param entityId Entity identifier
      */
-    async clearAllFaults(entityType: 'components' | 'apps', entityId: string): Promise<void> {
+    async clearAllFaults(entityType: SovdResourceEntityType, entityId: string): Promise<void> {
         const response = await fetchWithTimeout(this.getUrl(`${entityType}/${entityId}/faults`), {
             method: 'DELETE',
             headers: { Accept: 'application/json' },
@@ -1437,12 +1469,12 @@ export class SovdApiClient {
 
     /**
      * Get fault snapshots for a specific entity
-     * @param entityType Entity type ('components' or 'apps')
+     * @param entityType Entity type
      * @param entityId Entity identifier
      * @param faultCode Fault code
      */
     async getEntityFaultSnapshots(
-        entityType: 'components' | 'apps',
+        entityType: SovdResourceEntityType,
         entityId: string,
         faultCode: string
     ): Promise<ListSnapshotsResponse> {

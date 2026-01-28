@@ -1,5 +1,102 @@
 import type { SchemaFieldType, TopicSchema } from '@/lib/types';
 
+// =============================================================================
+// JSON Schema to TopicSchema Conversion
+// =============================================================================
+
+/**
+ * JSON Schema format returned by the API
+ */
+interface JsonSchemaField {
+    type?: string;
+    properties?: Record<string, JsonSchemaField>;
+    items?: JsonSchemaField;
+}
+
+/**
+ * Map JSON Schema types to ROS 2 primitive types
+ */
+function mapJsonSchemaType(type: string | undefined): string {
+    if (!type) return 'object';
+    switch (type) {
+        case 'integer':
+            return 'int32';
+        case 'number':
+            return 'float64';
+        case 'boolean':
+            return 'bool';
+        case 'string':
+            return 'string';
+        case 'array':
+            return 'array';
+        case 'object':
+            return 'object';
+        default:
+            return type;
+    }
+}
+
+/**
+ * Convert a single JSON Schema field to SchemaFieldType
+ */
+function convertJsonSchemaField(field: JsonSchemaField): SchemaFieldType {
+    const result: SchemaFieldType = {
+        type: mapJsonSchemaType(field.type),
+    };
+
+    // Handle nested objects (properties -> fields)
+    if (field.properties) {
+        result.fields = {};
+        for (const [key, value] of Object.entries(field.properties)) {
+            result.fields[key] = convertJsonSchemaField(value);
+        }
+    }
+
+    // Handle arrays
+    if (field.items) {
+        result.items = convertJsonSchemaField(field.items);
+    }
+
+    return result;
+}
+
+/**
+ * Convert JSON Schema format (from API) to TopicSchema format (for frontend)
+ *
+ * API returns:
+ * ```json
+ * { "type": "object", "properties": { "field": { "type": "integer" } } }
+ * ```
+ *
+ * Frontend expects:
+ * ```json
+ * { "field": { "type": "int32" } }
+ * ```
+ */
+export function convertJsonSchemaToTopicSchema(jsonSchema: unknown): TopicSchema | undefined {
+    if (!jsonSchema || typeof jsonSchema !== 'object') {
+        return undefined;
+    }
+
+    const schema = jsonSchema as JsonSchemaField;
+
+    // If it has properties at root level, convert them
+    if (schema.properties) {
+        const result: TopicSchema = {};
+        for (const [key, value] of Object.entries(schema.properties)) {
+            result[key] = convertJsonSchemaField(value);
+        }
+        return result;
+    }
+
+    // Already in TopicSchema format or unknown format
+    return jsonSchema as TopicSchema;
+}
+
+// =============================================================================
+// Type Checking Utilities
+// =============================================================================
+
 /**
  * Check if a type is a primitive ROS 2 type
  */

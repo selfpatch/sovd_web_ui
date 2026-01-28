@@ -17,7 +17,7 @@ import type {
     VersionInfo,
     SovdFunction,
 } from './types';
-import { createSovdClient, type SovdApiClient } from './sovd-api';
+import { createSovdClient, type SovdApiClient, type SovdResourceEntityType } from './sovd-api';
 
 const STORAGE_KEY = 'sovd_web_ui_server_url';
 
@@ -73,44 +73,44 @@ export interface AppState {
     clearSelection: () => void;
 
     // Configurations actions
-    fetchConfigurations: (entityId: string, entityType?: 'components' | 'apps') => Promise<void>;
+    fetchConfigurations: (entityId: string, entityType?: SovdResourceEntityType) => Promise<void>;
     setParameter: (
         entityId: string,
         paramName: string,
         value: unknown,
-        entityType?: 'components' | 'apps'
+        entityType?: SovdResourceEntityType
     ) => Promise<boolean>;
-    resetParameter: (entityId: string, paramName: string, entityType?: 'components' | 'apps') => Promise<boolean>;
+    resetParameter: (entityId: string, paramName: string, entityType?: SovdResourceEntityType) => Promise<boolean>;
     resetAllConfigurations: (
         entityId: string,
-        entityType?: 'components' | 'apps'
+        entityType?: SovdResourceEntityType
     ) => Promise<{ reset_count: number; failed_count: number }>;
 
     // Operations actions - updated for SOVD Execution model
-    fetchOperations: (entityId: string, entityType?: 'components' | 'apps') => Promise<void>;
+    fetchOperations: (entityId: string, entityType?: SovdResourceEntityType) => Promise<void>;
     createExecution: (
         entityId: string,
         operationName: string,
         request: CreateExecutionRequest,
-        entityType?: 'components' | 'apps'
+        entityType?: SovdResourceEntityType
     ) => Promise<CreateExecutionResponse | null>;
     refreshExecutionStatus: (
         entityId: string,
         operationName: string,
         executionId: string,
-        entityType?: 'components' | 'apps'
+        entityType?: SovdResourceEntityType
     ) => Promise<void>;
     cancelExecution: (
         entityId: string,
         operationName: string,
         executionId: string,
-        entityType?: 'components' | 'apps'
+        entityType?: SovdResourceEntityType
     ) => Promise<boolean>;
     setAutoRefreshExecutions: (enabled: boolean) => void;
 
     // Faults actions
     fetchFaults: () => Promise<void>;
-    clearFault: (entityType: 'components' | 'apps', entityId: string, faultCode: string) => Promise<boolean>;
+    clearFault: (entityType: SovdResourceEntityType, entityId: string, faultCode: string) => Promise<boolean>;
     subscribeFaultStream: () => void;
     unsubscribeFaultStream: () => void;
 }
@@ -869,7 +869,9 @@ export const useAppStore = create<AppState>()(
                 set({ isRefreshing: true });
 
                 try {
-                    const details = await client.getEntityDetails(selectedPath);
+                    // Convert tree path to API path (remove /server prefix)
+                    const apiPath = selectedPath.replace(/^\/server/, '');
+                    const details = await client.getEntityDetails(apiPath);
                     set({ selectedEntity: details, isRefreshing: false });
                 } catch {
                     toast.error('Failed to refresh data');
@@ -889,7 +891,7 @@ export const useAppStore = create<AppState>()(
             // CONFIGURATIONS ACTIONS (ROS 2 Parameters)
             // ===========================================================================
 
-            fetchConfigurations: async (entityId: string, entityType: 'components' | 'apps' = 'components') => {
+            fetchConfigurations: async (entityId: string, entityType: SovdResourceEntityType = 'components') => {
                 const { client, configurations } = get();
                 if (!client) return;
 
@@ -911,7 +913,7 @@ export const useAppStore = create<AppState>()(
                 entityId: string,
                 paramName: string,
                 value: unknown,
-                entityType: 'components' | 'apps' = 'components'
+                entityType: SovdResourceEntityType = 'components'
             ) => {
                 const { client, configurations } = get();
                 if (!client) return false;
@@ -965,20 +967,16 @@ export const useAppStore = create<AppState>()(
             resetParameter: async (
                 entityId: string,
                 paramName: string,
-                entityType: 'components' | 'apps' = 'components'
+                entityType: SovdResourceEntityType = 'components'
             ) => {
-                const { client, configurations } = get();
+                const { client, fetchConfigurations } = get();
                 if (!client) return false;
 
                 try {
-                    const result = await client.resetConfiguration(entityId, paramName, entityType);
+                    await client.resetConfiguration(entityId, paramName, entityType);
 
-                    // Update local state with reset value
-                    const newConfigs = new Map(configurations);
-                    const params = newConfigs.get(entityId) || [];
-                    const updatedParams = params.map((p) => (p.name === paramName ? { ...p, value: result.value } : p));
-                    newConfigs.set(entityId, updatedParams);
-                    set({ configurations: newConfigs });
+                    // Refetch configurations to get updated value after reset
+                    await fetchConfigurations(entityId, entityType);
                     toast.success(`Parameter ${paramName} reset to default`);
                     return true;
                 } catch (error) {
@@ -988,7 +986,7 @@ export const useAppStore = create<AppState>()(
                 }
             },
 
-            resetAllConfigurations: async (entityId: string, entityType: 'components' | 'apps' = 'components') => {
+            resetAllConfigurations: async (entityId: string, entityType: SovdResourceEntityType = 'components') => {
                 const { client, fetchConfigurations } = get();
                 if (!client) return { reset_count: 0, failed_count: 0 };
 
@@ -1016,7 +1014,7 @@ export const useAppStore = create<AppState>()(
             // OPERATIONS ACTIONS (ROS 2 Services & Actions) - SOVD Execution Model
             // ===========================================================================
 
-            fetchOperations: async (entityId: string, entityType: 'components' | 'apps' = 'components') => {
+            fetchOperations: async (entityId: string, entityType: SovdResourceEntityType = 'components') => {
                 const { client, operations } = get();
                 if (!client) return;
 
@@ -1038,7 +1036,7 @@ export const useAppStore = create<AppState>()(
                 entityId: string,
                 operationName: string,
                 request: CreateExecutionRequest,
-                entityType: 'components' | 'apps' = 'components'
+                entityType: SovdResourceEntityType = 'components'
             ) => {
                 const { client, activeExecutions } = get();
                 if (!client) return null;
@@ -1075,7 +1073,7 @@ export const useAppStore = create<AppState>()(
                 entityId: string,
                 operationName: string,
                 executionId: string,
-                entityType: 'components' | 'apps' = 'components'
+                entityType: SovdResourceEntityType = 'components'
             ) => {
                 const { client, activeExecutions } = get();
                 if (!client) return;
@@ -1095,7 +1093,7 @@ export const useAppStore = create<AppState>()(
                 entityId: string,
                 operationName: string,
                 executionId: string,
-                entityType: 'components' | 'apps' = 'components'
+                entityType: SovdResourceEntityType = 'components'
             ) => {
                 const { client, activeExecutions } = get();
                 if (!client) return false;
@@ -1138,7 +1136,7 @@ export const useAppStore = create<AppState>()(
                 }
             },
 
-            clearFault: async (entityType: 'components' | 'apps', entityId: string, faultCode: string) => {
+            clearFault: async (entityType: SovdResourceEntityType, entityId: string, faultCode: string) => {
                 const { client, fetchFaults } = get();
                 if (!client) return false;
 
