@@ -53,21 +53,21 @@ const COMPONENT_TABS: TabConfig[] = [
 ];
 
 /**
- * Determine entity type from path for API calls
- * Path examples:
- * - areas/{area}/components/{component} → 'components'
- * - areas/{area}/apps/{app} → 'apps'
- * - functions/{function} → 'functions'
- * - areas/{area} → 'areas'
+ * Determine entity type for API calls based on entity type
  */
-function getEntityTypeFromPath(path: string): SovdResourceEntityType {
-    const parts = path.split('/').filter(Boolean);
-    // Look for entity type keywords in path
-    if (parts.includes('apps')) return 'apps';
-    if (parts.includes('components')) return 'components';
-    if (parts.includes('functions')) return 'functions';
-    if (parts.includes('areas')) return 'areas';
-    return 'components'; // default fallback
+function getEntityTypeForApi(entityType: string | undefined): SovdResourceEntityType {
+    switch (entityType) {
+        case 'app':
+            return 'apps';
+        case 'component':
+            return 'components';
+        case 'function':
+            return 'functions';
+        case 'area':
+            return 'areas';
+        default:
+            return 'components'; // default fallback
+    }
 }
 
 /**
@@ -95,7 +95,7 @@ function getBreadcrumbIcon(type: string) {
  */
 interface ComponentTabContentProps {
     activeTab: ComponentTab;
-    componentId: string;
+    entityId: string;
     selectedPath: string;
     selectedEntity: NonNullable<AppState['selectedEntity']>;
     hasTopicsInfo: boolean;
@@ -106,7 +106,7 @@ interface ComponentTabContentProps {
 
 function ComponentTabContent({
     activeTab,
-    componentId,
+    entityId,
     selectedPath,
     selectedEntity,
     hasTopicsInfo,
@@ -126,11 +126,11 @@ function ComponentTabContent({
                 />
             );
         case 'operations':
-            return <OperationsPanel key={componentId} componentId={componentId} entityType={entityType} />;
+            return <OperationsPanel key={entityId} entityId={entityId} entityType={entityType} />;
         case 'configurations':
-            return <ConfigurationPanel key={componentId} componentId={componentId} entityType={entityType} />;
+            return <ConfigurationPanel key={entityId} entityId={entityId} entityType={entityType} />;
         case 'faults':
-            return <FaultsPanel key={componentId} componentId={componentId} entityType={entityType} />;
+            return <FaultsPanel key={entityId} entityId={entityId} entityType={entityType} />;
         default:
             return null;
     }
@@ -288,12 +288,13 @@ function DataTabContent({
  */
 interface OperationDetailCardProps {
     entity: NonNullable<AppState['selectedEntity']>;
-    componentId: string;
+    entityId: string;
+    entityType: SovdResourceEntityType;
 }
 
-function OperationDetailCard({ entity, componentId }: OperationDetailCardProps) {
+function OperationDetailCard({ entity, entityId, entityType }: OperationDetailCardProps) {
     // Render full OperationsPanel with the specific operation highlighted
-    return <OperationsPanel componentId={componentId} highlightOperation={entity.name} />;
+    return <OperationsPanel entityId={entityId} highlightOperation={entity.name} entityType={entityType} />;
 }
 
 /**
@@ -301,11 +302,11 @@ function OperationDetailCard({ entity, componentId }: OperationDetailCardProps) 
  */
 interface ParameterDetailCardProps {
     entity: NonNullable<AppState['selectedEntity']>;
-    componentId: string;
+    entityId: string;
     entityType: SovdResourceEntityType;
 }
 
-function ParameterDetailCard({ entity, componentId, entityType }: ParameterDetailCardProps) {
+function ParameterDetailCard({ entity, entityId, entityType }: ParameterDetailCardProps) {
     const parameterData = entity.data as Parameter | undefined;
 
     if (!parameterData) {
@@ -337,7 +338,7 @@ function ParameterDetailCard({ entity, componentId, entityType }: ParameterDetai
                 </div>
             </CardHeader>
             <CardContent>
-                <ConfigurationPanel componentId={componentId} highlightParam={entity.name} entityType={entityType} />
+                <ConfigurationPanel entityId={entityId} highlightParam={entity.name} entityType={entityType} />
             </CardContent>
         </Card>
     );
@@ -510,15 +511,55 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
                 (selectedEntity.topicsInfo.subscribes?.length ?? 0) > 0);
         const hasError = !!selectedEntity.error;
 
-        // Extract component ID from path for component/topic views
+        // Extract component ID from path for component/topic/operation views
         const pathParts = selectedPath.split('/').filter(Boolean);
-        // For topics, the path is like: /area/component/data/topicName
-        // We need to find the component ID (segment before /data/)
+        // For topics, the path is like: /server/area/component/data/topicName
+        // For operations, the path is like: /server/area/component/operations/opName
+        // or /server/function_name/operations/opName
         const dataIndex = pathParts.indexOf('data');
-        const parentComponentId = dataIndex > 0 ? pathParts[dataIndex - 1] : null;
-        // Use parent component ID for topics, otherwise use entity's own ID
-        const componentId = isTopic && parentComponentId ? parentComponentId : selectedEntity.id;
-        const entityType = getEntityTypeFromPath(selectedPath);
+        const opsIndex = pathParts.indexOf('operations');
+        const configIndex = pathParts.indexOf('configurations');
+
+        // Extract parent entity ID from path based on resource type
+        let parentEntityId: string | null = null;
+        if (dataIndex > 0) {
+            parentEntityId = pathParts[dataIndex - 1] ?? null;
+        } else if (opsIndex > 0) {
+            parentEntityId = pathParts[opsIndex - 1] ?? null;
+        } else if (configIndex > 0) {
+            parentEntityId = pathParts[configIndex - 1] ?? null;
+        }
+
+        // Determine if this is an operation or parameter (resource-level entity)
+        const isOperationOrParam =
+            selectedEntity.type === 'service' ||
+            selectedEntity.type === 'action' ||
+            selectedEntity.type === 'parameter';
+
+        // Get entityId: prefer from entity (set by API for operations), then from path, then entity's own ID
+        const entityId =
+            (selectedEntity.componentId as string | undefined) ??
+            ((isTopic || isOperationOrParam) && parentEntityId ? parentEntityId : null) ??
+            selectedEntity.id;
+
+        // Get entityType: prefer from entity (set by API for operations), then infer from type/path
+        let entityType: SovdResourceEntityType =
+            (selectedEntity.entityType as SovdResourceEntityType | undefined) ??
+            getEntityTypeForApi(selectedEntity.type);
+
+        // Fallback inference for operations/parameters when entityType not in entity
+        if (isOperationOrParam && !selectedEntity.entityType && parentEntityId) {
+            // Check if parent is a function (path: /server/function_name/operations/...)
+            // vs component/app/area based on path depth
+            // Functions: pathParts = ['server', 'func_name', 'operations', 'op_name'] - opsIndex is 2
+            const resourceIndex = Math.max(dataIndex, opsIndex, configIndex);
+            if (resourceIndex === 2) {
+                // Short path: /server/entity/resource/name - could be function or area
+                // Check if the parent ID looks like a function (has underscore pattern) or area
+                entityType = 'functions'; // Default to functions for short paths
+            }
+            // Otherwise keep default (components)
+        }
 
         // Get icon for entity type
         const getEntityTypeIcon = () => {
@@ -742,7 +783,7 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
                                 <DataPanel
                                     key={topic.timestamp}
                                     topic={topic}
-                                    componentId={componentId}
+                                    entityId={entityId}
                                     entityType={entityType}
                                     client={client}
                                     isRefreshing={isRefreshing}
@@ -754,7 +795,7 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
                         // Component Dashboard with Tabs
                         <ComponentTabContent
                             activeTab={activeTab}
-                            componentId={componentId}
+                            entityId={entityId}
                             selectedPath={selectedPath}
                             selectedEntity={selectedEntity}
                             hasTopicsInfo={hasTopicsInfo ?? false}
@@ -762,16 +803,13 @@ export function EntityDetailPanel({ onConnectClick, viewMode = 'entity', onEntit
                             entityType={entityType}
                             topicsData={topicsData}
                         />
-                    ) : isArea || isApp || isFunction || isServer ? null : selectedEntity.type === 'action' ? ( // Already handled above with specialized panels
+                    ) : isArea || isApp || isFunction || isServer ? null : selectedEntity.type === 'action' ||
+                      selectedEntity.type === 'service' ? ( // Already handled above with specialized panels
                         // Service/Action detail view
-                        <OperationDetailCard entity={selectedEntity} componentId={componentId} />
+                        <OperationDetailCard entity={selectedEntity} entityId={entityId} entityType={entityType} />
                     ) : selectedEntity.type === 'parameter' ? (
                         // Parameter detail view
-                        <ParameterDetailCard
-                            entity={selectedEntity}
-                            componentId={componentId}
-                            entityType={entityType}
-                        />
+                        <ParameterDetailCard entity={selectedEntity} entityId={entityId} entityType={entityType} />
                     ) : (
                         <Card>
                             <CardContent className="pt-6">

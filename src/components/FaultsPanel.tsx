@@ -9,7 +9,7 @@ import type { Fault, FaultSeverity, FaultStatus } from '@/lib/types';
 import type { SovdResourceEntityType } from '@/lib/sovd-api';
 
 interface FaultsPanelProps {
-    componentId: string;
+    entityId: string;
     /** Type of entity */
     entityType?: SovdResourceEntityType;
 }
@@ -144,7 +144,7 @@ function FaultRow({
 /**
  * Panel displaying faults for a component or app
  */
-export function FaultsPanel({ componentId, entityType = 'components' }: FaultsPanelProps) {
+export function FaultsPanel({ entityId, entityType = 'components' }: FaultsPanelProps) {
     const [faults, setFaults] = useState<Fault[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [clearingCodes, setClearingCodes] = useState<Set<string>>(new Set());
@@ -163,7 +163,7 @@ export function FaultsPanel({ componentId, entityType = 'components' }: FaultsPa
         setError(null);
 
         try {
-            const response = await client.listEntityFaults(entityType, componentId);
+            const response = await client.listEntityFaults(entityType, entityId);
             setFaults(response.items || []);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to load faults');
@@ -171,7 +171,7 @@ export function FaultsPanel({ componentId, entityType = 'components' }: FaultsPa
         } finally {
             setIsLoading(false);
         }
-    }, [client, componentId, entityType]);
+    }, [client, entityId, entityType]);
 
     useEffect(() => {
         loadFaults();
@@ -184,7 +184,7 @@ export function FaultsPanel({ componentId, entityType = 'components' }: FaultsPa
             setClearingCodes((prev) => new Set([...prev, code]));
 
             try {
-                await client.clearFault(entityType, componentId, code);
+                await client.clearFault(entityType, entityId, code);
                 // Reload faults after clearing
                 await loadFaults();
             } catch {
@@ -197,7 +197,7 @@ export function FaultsPanel({ componentId, entityType = 'components' }: FaultsPa
                 });
             }
         },
-        [client, componentId, entityType, loadFaults]
+        [client, entityId, entityType, loadFaults]
     );
 
     // Count faults by severity

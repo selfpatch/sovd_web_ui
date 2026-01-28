@@ -45,11 +45,11 @@ export interface AppState {
     isRefreshing: boolean;
 
     // Configurations state (ROS 2 Parameters)
-    configurations: Map<string, Parameter[]>; // componentId -> parameters
+    configurations: Map<string, Parameter[]>; // entityId -> parameters
     isLoadingConfigurations: boolean;
 
     // Operations state (ROS 2 Services & Actions)
-    operations: Map<string, Operation[]>; // componentId -> operations
+    operations: Map<string, Operation[]>; // entityId -> operations
     isLoadingOperations: boolean;
 
     // Active executions (for monitoring async actions) - SOVD Execution Model
@@ -799,9 +799,12 @@ export const useAppStore = create<AppState>()(
 
                 // Handle service/action selection - show operation detail with data from tree
                 if (node && (node.type === 'service' || node.type === 'action') && node.data) {
-                    // Extract componentId from path: /area/component/operations/opName
+                    // Extract componentId from path: /server/area/component/operations/opName
+                    // or /server/function_name/operations/opName
                     const pathSegments = path.split('/').filter(Boolean);
-                    const componentId = (pathSegments.length >= 2 ? pathSegments[1] : pathSegments[0]) ?? '';
+                    const opsIndex = pathSegments.indexOf('operations');
+                    // Component/function ID is the segment right before 'operations'
+                    const componentId = opsIndex > 0 ? pathSegments[opsIndex - 1] : (pathSegments[0] ?? '');
 
                     set({
                         selectedPath: path,

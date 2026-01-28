@@ -12,7 +12,7 @@ interface TopicPublishFormProps {
     /** The topic to publish to */
     topic: ComponentTopic;
     /** Entity ID (for API calls) */
-    componentId: string;
+    entityId: string;
     /** Entity type for API endpoint */
     entityType?: SovdResourceEntityType;
     /** API client instance */
@@ -63,7 +63,7 @@ function getInitialValues(topic: ComponentTopic): Record<string, unknown> {
  */
 export function TopicPublishForm({
     topic,
-    componentId,
+    entityId,
     entityType = 'components',
     client,
     initialValue,
@@ -165,7 +165,7 @@ export function TopicPublishForm({
 
         setIsPublishing(true);
         try {
-            await client.publishToEntityData(entityType, componentId, topicName, {
+            await client.publishToEntityData(entityType, entityId, topicName, {
                 type: messageType,
                 data: dataToPublish,
             });

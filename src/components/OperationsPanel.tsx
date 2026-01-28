@@ -43,7 +43,7 @@ interface OperationHistoryEntry {
 }
 
 interface OperationsPanelProps {
-    componentId: string;
+    entityId: string;
     /** Optional: highlight and auto-expand a specific operation */
     highlightOperation?: string;
     /** Entity type for API calls */
@@ -107,14 +107,16 @@ function isEmptySchema(schema: TopicSchema | null): boolean {
  */
 function OperationRow({
     operation,
-    componentId,
+    entityId,
     onInvoke,
     defaultExpanded = false,
+    entityType = 'components',
 }: {
     operation: Operation;
-    componentId: string;
+    entityId: string;
     onInvoke: (opName: string, payload: unknown) => Promise<CreateExecutionResponse | null>;
     defaultExpanded?: boolean;
+    entityType?: SovdResourceEntityType;
 }) {
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
     const [useFormView, setUseFormView] = useState(true);
@@ -357,9 +359,10 @@ function OperationRow({
                         {/* Action status monitoring for latest action */}
                         {latestExecutionId && operation.kind === 'action' && (
                             <ActionStatusPanel
-                                componentId={componentId}
+                                entityId={entityId}
                                 operationName={operation.name}
                                 executionId={latestExecutionId}
+                                entityType={entityType}
                             />
                         )}
 
@@ -428,7 +431,7 @@ function OperationRow({
     );
 }
 
-export function OperationsPanel({ componentId, highlightOperation, entityType = 'components' }: OperationsPanelProps) {
+export function OperationsPanel({ entityId, highlightOperation, entityType = 'components' }: OperationsPanelProps) {
     const { operations, isLoadingOperations, fetchOperations, createExecution } = useAppStore(
         useShallow((state: AppState) => ({
             operations: state.operations,
@@ -438,29 +441,28 @@ export function OperationsPanel({ componentId, highlightOperation, entityType = 
         }))
     );
 
-    const componentOperations = operations.get(componentId) || [];
-    const services = componentOperations.filter((op) => op.kind === 'service');
-    const actions = componentOperations.filter((op) => op.kind === 'action');
+    const entityOperations = operations.get(entityId) || [];
+    const services = entityOperations.filter((op) => op.kind === 'service');
+    const actions = entityOperations.filter((op) => op.kind === 'action');
 
-    // Fetch operations on mount (lazy loading)
+    // Fetch operations on mount or when entityId/entityType changes
     useEffect(() => {
-        if (!operations.has(componentId)) {
-            fetchOperations(componentId, entityType);
-        }
-    }, [componentId, operations, fetchOperations, entityType]);
+        // Always fetch when entityId or entityType changes to ensure fresh data
+        fetchOperations(entityId, entityType);
+    }, [entityId, entityType, fetchOperations]);
 
     const handleRefresh = useCallback(() => {
-        fetchOperations(componentId, entityType);
-    }, [componentId, fetchOperations, entityType]);
+        fetchOperations(entityId, entityType);
+    }, [entityId, fetchOperations, entityType]);
 
     const handleInvoke = useCallback(
         async (opName: string, payload: unknown) => {
-            return createExecution(componentId, opName, payload as Parameters<typeof createExecution>[2], entityType);
+            return createExecution(entityId, opName, payload as Parameters<typeof createExecution>[2], entityType);
         },
-        [componentId, createExecution, entityType]
+        [entityId, createExecution, entityType]
     );
 
-    if (isLoadingOperations && componentOperations.length === 0) {
+    if (isLoadingOperations && entityOperations.length === 0) {
         return (
             <Card>
                 <CardContent className="flex items-center justify-center py-8">
@@ -487,11 +489,11 @@ export function OperationsPanel({ componentId, highlightOperation, entityType = 
                 </div>
             </CardHeader>
             <CardContent>
-                {componentOperations.length === 0 ? (
+                {entityOperations.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
                         <Zap className="w-10 h-10 mb-3 opacity-30" />
                         <p className="text-sm font-medium">No operations available</p>
-                        <p className="text-xs mt-1">This component has no services or actions</p>
+                        <p className="text-xs mt-1">This entity has no services or actions</p>
                     </div>
                 ) : (
                     <div className="space-y-4">
@@ -507,9 +509,10 @@ export function OperationsPanel({ componentId, highlightOperation, entityType = 
                                         <OperationRow
                                             key={op.name}
                                             operation={op}
-                                            componentId={componentId}
+                                            entityId={entityId}
                                             onInvoke={handleInvoke}
                                             defaultExpanded={op.name === highlightOperation}
+                                            entityType={entityType}
                                         />
                                     ))}
                                 </div>
@@ -528,9 +531,10 @@ export function OperationsPanel({ componentId, highlightOperation, entityType = 
                                         <OperationRow
                                             key={op.name}
                                             operation={op}
-                                            componentId={componentId}
+                                            entityId={entityId}
                                             onInvoke={handleInvoke}
                                             defaultExpanded={op.name === highlightOperation}
+                                            entityType={entityType}
                                         />
                                     ))}
                                 </div>
