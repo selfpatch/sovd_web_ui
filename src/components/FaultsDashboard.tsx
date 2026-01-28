@@ -29,11 +29,24 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAppStore } from '@/lib/store';
 import type { Fault, FaultSeverity, FaultStatus } from '@/lib/types';
+import type { SovdResourceEntityType } from '@/lib/sovd-api';
 
 /**
  * Default polling interval in milliseconds
  */
 const DEFAULT_POLL_INTERVAL = 5000;
+
+/**
+ * Map fault entity_type (may be singular or plural) to SovdResourceEntityType (always plural)
+ */
+function mapFaultEntityTypeToResourceType(entityType: string): SovdResourceEntityType {
+    const type = entityType.toLowerCase();
+    if (type === 'area' || type === 'areas') return 'areas';
+    if (type === 'app' || type === 'apps') return 'apps';
+    if (type === 'function' || type === 'functions') return 'functions';
+    // Default to components for 'component', 'components', or unknown types
+    return 'components';
+}
 
 /**
  * Get badge variant for fault severity
@@ -275,10 +288,11 @@ export function FaultsDashboard() {
     const [statusFilters, setStatusFilters] = useState<Set<FaultStatus>>(new Set(['active', 'pending']));
     const [groupByEntity, setGroupByEntity] = useState(true);
 
-    const { client, isConnected } = useAppStore(
+    const { client, isConnected, clearFault } = useAppStore(
         useShallow((state) => ({
             client: state.client,
             isConnected: state.isConnected,
+            clearFault: state.clearFault,
         }))
     );
 
@@ -324,23 +338,19 @@ export function FaultsDashboard() {
     // Clear fault handler
     const handleClear = useCallback(
         async (code: string) => {
-            if (!client) return;
-
             setClearingCodes((prev) => new Set([...prev, code]));
 
             try {
                 // Find the fault to get entity info
                 const fault = faults.find((f) => f.code === code);
                 if (fault) {
-                    // Determine the correct entity group based on the fault's entity type
-                    const entityGroup =
-                        fault.entity_type === 'app' || fault.entity_type === 'apps' ? 'apps' : 'components';
-                    await client.clearFault(entityGroup, fault.entity_id, code);
+                    // Map the fault's entity_type to the correct resource type for the API
+                    const entityGroup = mapFaultEntityTypeToResourceType(fault.entity_type);
+                    // Use store's clearFault which has proper error handling with toasts
+                    await clearFault(entityGroup, fault.entity_id, code);
                 }
                 // Reload faults after clearing
                 await loadFaults(true);
-            } catch {
-                // Error handled by toast in store
             } finally {
                 setClearingCodes((prev) => {
                     const next = new Set(prev);
@@ -349,7 +359,7 @@ export function FaultsDashboard() {
                 });
             }
         },
-        [client, faults, loadFaults]
+        [faults, loadFaults, clearFault]
     );
 
     // Filter faults
