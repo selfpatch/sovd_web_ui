@@ -1222,7 +1222,27 @@ export class SovdApiClient {
             throw new Error(`HTTP ${response.status}`);
         }
 
-        return unwrapItems<ComponentTopic>(await response.json());
+        // API returns {items: [{id, name, category, x-medkit}]} format
+        interface DataItem {
+            id: string;
+            name: string;
+            category?: string;
+            'x-medkit'?: {
+                ros2?: { topic?: string; type?: string; direction?: string };
+                type_info?: { schema?: Record<string, unknown> };
+            };
+        }
+        const dataItems = unwrapItems<DataItem>(await response.json());
+
+        // Transform to ComponentTopic format
+        return dataItems.map((item) => ({
+            topic: item.name || item['x-medkit']?.ros2?.topic || item.id,
+            timestamp: Date.now() * 1000000,
+            data: null,
+            status: 'metadata_only' as const,
+            type: item['x-medkit']?.ros2?.type,
+            type_info: item['x-medkit']?.type_info,
+        }));
     }
 
     // ===========================================================================
