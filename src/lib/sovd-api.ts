@@ -1476,9 +1476,14 @@ export class SovdApiClient {
         }
 
         // Extract entity info from reporting_sources
+        // reporting_sources contains ROS 2 node paths like "/bridge/diagnostic_bridge"
+        // We need to map this to SOVD entity: node name "diagnostic_bridge" → app ID "diagnostic-bridge"
         const source = apiFault.reporting_sources?.[0] || '';
-        const entity_id = source.split('/').pop() || 'unknown';
-        const entity_type = source.includes('/bridge/') ? 'bridge' : 'component';
+        const nodeName = source.split('/').pop() || 'unknown';
+        // Convert underscores to hyphens to match SOVD app ID convention
+        const entity_id = nodeName.replace(/_/g, '-');
+        // Faults are reported by apps
+        const entity_type = 'app';
 
         return {
             code: apiFault.fault_code,

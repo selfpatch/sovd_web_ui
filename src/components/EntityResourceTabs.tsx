@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { useAppStore } from '@/lib/store';
 import { ConfigurationPanel } from '@/components/ConfigurationPanel';
 import { OperationsPanel } from '@/components/OperationsPanel';
+import { FaultsPanel } from '@/components/FaultsPanel';
 import type { SovdResourceEntityType } from '@/lib/sovd-api';
 import type { ComponentTopic, Operation, Parameter, Fault } from '@/lib/types';
 
@@ -186,54 +187,7 @@ export function EntityResourceTabs({ entityId, entityType, basePath, onNavigate 
                     )}
 
                     {/* Faults Tab */}
-                    {activeTab === 'faults' && (
-                        <Card>
-                            <CardHeader className="pb-3">
-                                <CardTitle className="text-base flex items-center gap-2">
-                                    <AlertTriangle className="w-4 h-4 text-red-500" />
-                                    Faults
-                                </CardTitle>
-                                <CardDescription>Active faults from child entities</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                {faults.length === 0 ? (
-                                    <div className="text-center text-muted-foreground py-4">
-                                        <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                                        <p className="text-sm">No active faults.</p>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2 max-h-80 overflow-y-auto">
-                                        {faults.map((fault) => (
-                                            <div
-                                                key={fault.code}
-                                                className="flex items-start gap-3 p-2.5 rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-900"
-                                            >
-                                                <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="font-medium text-sm">{fault.code}</div>
-                                                    <div className="text-xs text-muted-foreground truncate">
-                                                        {fault.message}
-                                                    </div>
-                                                </div>
-                                                <Badge
-                                                    variant="outline"
-                                                    className={`text-xs shrink-0 ${
-                                                        fault.severity === 'critical'
-                                                            ? 'border-red-500 text-red-600'
-                                                            : fault.severity === 'error'
-                                                              ? 'border-orange-500 text-orange-600'
-                                                              : 'border-yellow-500 text-yellow-600'
-                                                    }`}
-                                                >
-                                                    {fault.severity}
-                                                </Badge>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
-                    )}
+                    {activeTab === 'faults' && <FaultsPanel entityId={entityId} entityType={entityType} />}
                 </>
             )}
         </div>
