@@ -14,7 +14,10 @@ import type { EntityTreeNode } from '@/lib/types';
 
 /**
  * Flatten tree nodes for search indexing
- * Note: Virtual folders are no longer created in the tree (resources shown in detail panel)
+ *
+ * TODO: This only indexes nodes currently in tree state. Unexpanded entity children
+ * (e.g. apps under components) aren't searchable until the parent is expanded.
+ * Consider fetching a full entity list from API for comprehensive search.
  */
 function flattenTree(nodes: EntityTreeNode[]): EntityTreeNode[] {
     const result: EntityTreeNode[] = [];
