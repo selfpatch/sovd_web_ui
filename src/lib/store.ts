@@ -132,26 +132,31 @@ function toTreeNode(entity: SovdEntity, parentPath: string = ''): EntityTreeNode
     const path = parentPath ? `${parentPath}/${entity.id}` : `/${entity.id}`;
     const entityType = entity.type.toLowerCase();
 
-    // Prefer explicit metadata / existing children if available; fall back to type heuristic.
+    // Determine hasChildren based on explicit metadata or type heuristic
+    // Note: hasChildren controls whether expand button is shown
+    // children: undefined means "not loaded yet" (lazy loading on expand)
     let hasChildren: boolean;
     const entityAny = entity as unknown as Record<string, unknown>;
     if (Object.prototype.hasOwnProperty.call(entityAny, 'hasChildren') && typeof entityAny.hasChildren === 'boolean') {
+        // Explicit hasChildren metadata from API - use as-is
         hasChildren = entityAny.hasChildren as boolean;
     } else if (Array.isArray(entityAny.children)) {
+        // Children array provided - check if non-empty
         hasChildren = (entityAny.children as unknown[]).length > 0;
     } else {
-        // Areas and components typically have children (loaded on expand)
-        // Apps are usually leaf nodes - their resources are shown in the detail panel
+        // No explicit metadata - use type-based heuristic:
+        // Areas and components typically have children (components, apps, subareas)
+        // Apps are leaf nodes - their resources shown in detail panel, not tree
         hasChildren = entityType !== 'app';
     }
 
     return {
         ...entity,
         path,
-        children: undefined, // Children loaded lazily on expand
+        children: undefined, // Children always loaded lazily on expand
         isLoading: false,
         isExpanded: false,
-        hasChildren,
+        hasChildren, // Controls whether expand button is shown
     };
 }
 
@@ -574,14 +579,17 @@ export const useAppStore = create<AppState>()(
                 if (!client) return;
 
                 try {
-                    // Fetch version info
+                    // Fetch version info - critical for server identification and feature detection
                     const versionInfo = await client.getVersionInfo().catch((error: unknown) => {
                         const message = error instanceof Error ? error.message : 'Unknown error';
-                        toast.warn(`Failed to fetch server version info: ${message}`);
+                        toast.warn(
+                            `Failed to fetch server version info: ${message}. ` +
+                                'Server will be shown with generic name and version info may be incomplete.'
+                        );
                         return null as VersionInfo | null;
                     });
 
-                    // Extract server info from version-info response
+                    // Extract server info from version-info response (fallback to generic values if unavailable)
                     const sovdInfo = versionInfo?.sovd_info?.[0];
                     const serverName = sovdInfo?.vendor_info?.name || 'SOVD Server';
                     const serverVersion = sovdInfo?.vendor_info?.version || '';
