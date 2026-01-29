@@ -110,16 +110,15 @@ function App() {
 
                 {/* Overlay for mobile when sidebar is open */}
                 {sidebarOpen && (
-                    <div
-                        className="fixed inset-0 z-30 bg-black/50 md:hidden"
+                    <button
+                        type="button"
+                        className="fixed inset-0 z-30 bg-black/50 md:hidden cursor-default"
                         onClick={() => setSidebarOpen(false)}
                         onKeyDown={(event) => {
                             if (event.key === 'Escape') {
                                 setSidebarOpen(false);
                             }
                         }}
-                        role="button"
-                        tabIndex={0}
                         aria-label="Close sidebar"
                     />
                 )}
