@@ -193,6 +193,279 @@ function findNode(nodes: EntityTreeNode[], path: string): EntityTreeNode | null 
     return null;
 }
 
+// =============================================================================
+// Entity Selection Handlers
+// =============================================================================
+
+/** Result from an entity selection handler */
+interface SelectionResult {
+    selectedPath: string;
+    selectedEntity: SovdEntityDetails;
+    expandedPaths?: string[];
+    rootEntities?: EntityTreeNode[];
+    isLoadingDetails: boolean;
+}
+
+/** Context passed to entity selection handlers */
+interface SelectionContext {
+    node: EntityTreeNode;
+    path: string;
+    expandedPaths: string[];
+    rootEntities: EntityTreeNode[];
+}
+
+/**
+ * Handle topic node selection
+ * Distinguished between TopicNodeData (partial) and ComponentTopic (full)
+ */
+async function handleTopicSelection(ctx: SelectionContext, client: SovdApiClient): Promise<SelectionResult | null> {
+    const { node, path, rootEntities } = ctx;
+    if (node.type !== 'topic' || !node.data) return null;
+
+    const data = node.data as TopicNodeData | ComponentTopic;
+    const isTopicNodeData = 'isPublisher' in data && 'isSubscriber' in data && !('type' in data);
+
+    if (isTopicNodeData) {
+        // TopicNodeData - need to fetch full details
+        const { isPublisher, isSubscriber } = data as TopicNodeData;
+        const apiPath = path.replace(/^\/server/, '');
+        const details = await client.getEntityDetails(apiPath);
+
+        // Update tree with full data merged with direction info
+        const updatedTree = updateNodeInTree(rootEntities, path, (n) => ({
+            ...n,
+            data: { ...details.topicData, isPublisher, isSubscriber },
+        }));
+
+        return {
+            selectedPath: path,
+            selectedEntity: details,
+            rootEntities: updatedTree,
+            isLoadingDetails: false,
+        };
+    }
+
+    // Full ComponentTopic data available
+    const topicData = data as ComponentTopic;
+    return {
+        selectedPath: path,
+        selectedEntity: {
+            id: node.id,
+            name: node.name,
+            href: node.href,
+            topicData,
+            rosType: topicData.type,
+            type: 'topic',
+        },
+        isLoadingDetails: false,
+    };
+}
+
+/** Handle server node selection */
+function handleServerSelection(ctx: SelectionContext): SelectionResult | null {
+    const { node, path, expandedPaths } = ctx;
+    if (node.type !== 'server') return null;
+
+    const serverData = node.data as {
+        versionInfo?: VersionInfo;
+        serverVersion?: string;
+        sovdVersion?: string;
+        serverUrl?: string;
+    };
+
+    return {
+        selectedPath: path,
+        expandedPaths: expandedPaths.includes(path) ? expandedPaths : [...expandedPaths, path],
+        selectedEntity: {
+            id: node.id,
+            name: node.name,
+            type: 'server',
+            href: node.href,
+            versionInfo: serverData?.versionInfo,
+            serverVersion: serverData?.serverVersion,
+            sovdVersion: serverData?.sovdVersion,
+            serverUrl: serverData?.serverUrl,
+        },
+        isLoadingDetails: false,
+    };
+}
+
+/** Handle component/subcomponent node selection */
+function handleComponentSelection(ctx: SelectionContext): SelectionResult | null {
+    const { node, path, expandedPaths } = ctx;
+    if (node.type !== 'component' && node.type !== 'subcomponent') return null;
+
+    return {
+        selectedPath: path,
+        expandedPaths: expandedPaths.includes(path) ? expandedPaths : [...expandedPaths, path],
+        selectedEntity: {
+            id: node.id,
+            name: node.name,
+            type: node.type,
+            href: node.href,
+            topicsInfo: node.topicsInfo,
+        },
+        isLoadingDetails: false,
+    };
+}
+
+/** Handle area/subarea node selection */
+function handleAreaSelection(ctx: SelectionContext): SelectionResult | null {
+    const { node, path, expandedPaths } = ctx;
+    if (node.type !== 'area' && node.type !== 'subarea') return null;
+
+    return {
+        selectedPath: path,
+        expandedPaths: expandedPaths.includes(path) ? expandedPaths : [...expandedPaths, path],
+        selectedEntity: {
+            id: node.id,
+            name: node.name,
+            type: node.type,
+            href: node.href,
+        },
+        isLoadingDetails: false,
+    };
+}
+
+/** Handle function node selection */
+function handleFunctionSelection(ctx: SelectionContext): SelectionResult | null {
+    const { node, path, expandedPaths } = ctx;
+    if (node.type !== 'function') return null;
+
+    const functionData = node.data as SovdFunction | undefined;
+    return {
+        selectedPath: path,
+        expandedPaths: expandedPaths.includes(path) ? expandedPaths : [...expandedPaths, path],
+        selectedEntity: {
+            id: node.id,
+            name: node.name,
+            type: 'function',
+            href: node.href,
+            description: functionData?.description,
+        },
+        isLoadingDetails: false,
+    };
+}
+
+/** Handle app node selection */
+function handleAppSelection(ctx: SelectionContext): SelectionResult | null {
+    const { node, path, expandedPaths } = ctx;
+    if (node.type !== 'app') return null;
+
+    const appData = node.data as App | undefined;
+    return {
+        selectedPath: path,
+        expandedPaths: expandedPaths.includes(path) ? expandedPaths : [...expandedPaths, path],
+        selectedEntity: {
+            id: node.id,
+            name: node.name,
+            type: 'app',
+            href: node.href,
+            fqn: appData?.fqn || node.name,
+            node_name: appData?.node_name,
+            namespace: appData?.namespace,
+            component_id: appData?.component_id,
+        },
+        isLoadingDetails: false,
+    };
+}
+
+/** Handle fault node selection */
+function handleFaultSelection(ctx: SelectionContext): SelectionResult | null {
+    const { node, path } = ctx;
+    if (node.type !== 'fault' || !node.data) return null;
+
+    const fault = node.data as Fault;
+    const pathSegments = path.split('/').filter(Boolean);
+    const entityId = pathSegments.length >= 2 ? pathSegments[pathSegments.length - 3] : '';
+
+    return {
+        selectedPath: path,
+        selectedEntity: {
+            id: node.id,
+            name: fault.message,
+            type: 'fault',
+            href: node.href,
+            data: fault,
+            entityId,
+        },
+        isLoadingDetails: false,
+    };
+}
+
+/** Handle parameter node selection */
+function handleParameterSelection(ctx: SelectionContext): SelectionResult | null {
+    const { node, path } = ctx;
+    if (node.type !== 'parameter' || !node.data) return null;
+
+    const pathSegments = path.split('/').filter(Boolean);
+    const componentId = (pathSegments.length >= 2 ? pathSegments[1] : pathSegments[0]) ?? '';
+
+    return {
+        selectedPath: path,
+        selectedEntity: {
+            id: node.id,
+            name: node.name,
+            type: 'parameter',
+            href: node.href,
+            data: node.data,
+            componentId,
+        },
+        isLoadingDetails: false,
+    };
+}
+
+/** Handle service/action node selection */
+function handleOperationSelection(ctx: SelectionContext): SelectionResult | null {
+    const { node, path } = ctx;
+    if ((node.type !== 'service' && node.type !== 'action') || !node.data) return null;
+
+    const pathSegments = path.split('/').filter(Boolean);
+    const opsIndex = pathSegments.indexOf('operations');
+    const componentId = opsIndex > 0 ? pathSegments[opsIndex - 1] : (pathSegments[0] ?? '');
+
+    return {
+        selectedPath: path,
+        selectedEntity: {
+            id: node.id,
+            name: node.name,
+            type: node.type,
+            href: node.href,
+            data: node.data,
+            componentId,
+        },
+        isLoadingDetails: false,
+    };
+}
+
+/** Fallback: fetch entity details from API when not in tree */
+async function fetchEntityFromApi(
+    path: string,
+    client: SovdApiClient,
+    set: (state: Partial<AppState>) => void
+): Promise<void> {
+    set({ selectedPath: path, isLoadingDetails: true, selectedEntity: null });
+
+    try {
+        const apiPath = path.replace(/^\/server/, '');
+        const details = await client.getEntityDetails(apiPath);
+        set({ selectedEntity: details, isLoadingDetails: false });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        toast.error(`Failed to load entity details for ${path}: ${message}`);
+
+        // Infer entity type from path structure
+        const segments = path.split('/').filter(Boolean);
+        const id = segments[segments.length - 1] || path;
+        const inferredType = segments.length === 1 ? 'area' : segments.length === 2 ? 'component' : 'unknown';
+
+        set({
+            selectedEntity: { id, name: id, type: inferredType, href: path, error: 'Failed to load details' },
+            isLoadingDetails: false,
+        });
+    }
+}
+
 export const useAppStore = create<AppState>()(
     persist(
         (set, get) => ({
@@ -546,7 +819,6 @@ export const useAppStore = create<AppState>()(
                 if (!client || path === selectedPath) return;
 
                 // Auto-expand parent paths and load children if needed
-                // This ensures navigation to deep paths (like /area/component/data/topic) works
                 const pathParts = path.split('/').filter(Boolean);
                 const newExpandedPaths = [...expandedPaths];
                 let currentPath = '';
@@ -556,10 +828,8 @@ export const useAppStore = create<AppState>()(
                     if (!newExpandedPaths.includes(currentPath)) {
                         newExpandedPaths.push(currentPath);
                     }
-                    // Check if this node needs children loaded
                     const parentNode = findNode(rootEntities, currentPath);
                     if (parentNode && parentNode.hasChildren !== false && !parentNode.children) {
-                        // Trigger load but don't await - let it happen in background
                         loadChildren(currentPath);
                     }
                 }
@@ -568,298 +838,74 @@ export const useAppStore = create<AppState>()(
                     set({ expandedPaths: newExpandedPaths });
                 }
 
-                // OPTIMIZATION: Check if tree already has this data
                 const node = findNode(rootEntities, path);
+                if (!node) {
+                    // Node not in tree - fall back to API fetch
+                    await fetchEntityFromApi(path, client, set);
+                    return;
+                }
 
-                // Optimization for Topic - check if we have TopicNodeData or full ComponentTopic
-                if (node && node.type === 'topic' && node.data) {
-                    const data = node.data as TopicNodeData | ComponentTopic;
+                const ctx: SelectionContext = { node, path, expandedPaths, rootEntities };
 
-                    // Check if it's TopicNodeData (from topicsInfo - only has isPublisher/isSubscriber)
-                    // vs full ComponentTopic (from /components/{id}/data - has type, publishers, QoS etc)
-                    const isTopicNodeData = 'isPublisher' in data && 'isSubscriber' in data && !('type' in data);
-
-                    if (isTopicNodeData) {
-                        // Preserve isPublisher/isSubscriber info from TopicNodeData
-                        const { isPublisher, isSubscriber } = data as TopicNodeData;
-
-                        // This is TopicNodeData - fetch actual topic details with full metadata
-                        set({
-                            selectedPath: path,
-                            isLoadingDetails: true,
-                            selectedEntity: null,
-                        });
-
-                        try {
-                            // Convert tree path to API path (remove /server prefix)
-                            const apiPath = path.replace(/^\/server/, '');
-                            const details = await client.getEntityDetails(apiPath);
-
-                            // Update tree node with full data MERGED with direction info
-                            // This preserves isPublisher/isSubscriber for the tree icons
-                            const updatedTree = updateNodeInTree(rootEntities, path, (n) => ({
-                                ...n,
-                                data: {
-                                    ...details.topicData,
-                                    isPublisher,
-                                    isSubscriber,
-                                },
-                            }));
-                            set({ rootEntities: updatedTree });
-
-                            set({ selectedEntity: details, isLoadingDetails: false });
-                        } catch (error) {
-                            const message = error instanceof Error ? error.message : 'Unknown error';
-                            toast.error(`Failed to load topic details: ${message}`);
+                // Try each handler in order - first match wins
+                // Topic requires special handling (async + possible error)
+                if (node.type === 'topic' && node.data) {
+                    set({ selectedPath: path, isLoadingDetails: true, selectedEntity: null });
+                    try {
+                        const result = await handleTopicSelection(ctx, client);
+                        if (result) {
                             set({
-                                selectedEntity: {
-                                    id: node.id,
-                                    name: node.name,
-                                    type: 'topic',
-                                    href: node.href,
-                                    error: 'Failed to load details',
-                                },
-                                isLoadingDetails: false,
+                                selectedPath: result.selectedPath,
+                                selectedEntity: result.selectedEntity,
+                                isLoadingDetails: result.isLoadingDetails,
+                                ...(result.rootEntities && { rootEntities: result.rootEntities }),
                             });
+                            return;
                         }
+                    } catch (error) {
+                        const message = error instanceof Error ? error.message : 'Unknown error';
+                        toast.error(`Failed to load topic details: ${message}`);
+                        set({
+                            selectedEntity: {
+                                id: node.id,
+                                name: node.name,
+                                type: 'topic',
+                                href: node.href,
+                                error: 'Failed to load details',
+                            },
+                            isLoadingDetails: false,
+                        });
                         return;
                     }
-
-                    // Full ComponentTopic data available (from expanded component children)
-                    const topicData = data as ComponentTopic;
-                    set({
-                        selectedPath: path,
-                        isLoadingDetails: false,
-                        selectedEntity: {
-                            id: node.id,
-                            name: node.name,
-                            href: node.href,
-                            topicData,
-                            rosType: topicData.type,
-                            type: 'topic',
-                        },
-                    });
-                    return;
                 }
 
-                // Handle Server node selection - show server info panel
-                if (node && node.type === 'server') {
-                    const newExpandedPaths = expandedPaths.includes(path) ? expandedPaths : [...expandedPaths, path];
-                    const serverData = node.data as {
-                        versionInfo?: VersionInfo;
-                        serverVersion?: string;
-                        sovdVersion?: string;
-                        serverUrl?: string;
-                    };
+                // Synchronous handlers
+                const handlers = [
+                    handleServerSelection,
+                    handleComponentSelection,
+                    handleAreaSelection,
+                    handleFunctionSelection,
+                    handleAppSelection,
+                    handleFaultSelection,
+                    handleParameterSelection,
+                    handleOperationSelection,
+                ];
 
-                    set({
-                        selectedPath: path,
-                        expandedPaths: newExpandedPaths,
-                        isLoadingDetails: false,
-                        selectedEntity: {
-                            id: node.id,
-                            name: node.name,
-                            type: 'server',
-                            href: node.href,
-                            versionInfo: serverData?.versionInfo,
-                            serverVersion: serverData?.serverVersion,
-                            sovdVersion: serverData?.sovdVersion,
-                            serverUrl: serverData?.serverUrl,
-                        },
-                    });
-                    return;
-                }
-
-                // Optimization for Component/Subcomponent - just select it and auto-expand
-                // Don't modify children - virtual folders (resources/, subcomponents/) are already there
-                if (node && (node.type === 'component' || node.type === 'subcomponent')) {
-                    // Auto-expand to show virtual folders
-                    const newExpandedPaths = expandedPaths.includes(path) ? expandedPaths : [...expandedPaths, path];
-
-                    set({
-                        selectedPath: path,
-                        expandedPaths: newExpandedPaths,
-                        isLoadingDetails: false,
-                        selectedEntity: {
-                            id: node.id,
-                            name: node.name,
-                            type: node.type,
-                            href: node.href,
-                            // Pass topicsInfo if available for the Data tab
-                            topicsInfo: node.topicsInfo,
-                        },
-                    });
-                    return;
-                }
-
-                // Handle Area/Subarea entity selection - auto-expand to show virtual folders
-                if (node && (node.type === 'area' || node.type === 'subarea')) {
-                    const newExpandedPaths = expandedPaths.includes(path) ? expandedPaths : [...expandedPaths, path];
-
-                    set({
-                        selectedPath: path,
-                        expandedPaths: newExpandedPaths,
-                        isLoadingDetails: false,
-                        selectedEntity: {
-                            id: node.id,
-                            name: node.name,
-                            type: node.type,
-                            href: node.href,
-                        },
-                    });
-                    return;
-                }
-
-                // Handle Function entity selection - show function panel with hosts
-                if (node && node.type === 'function') {
-                    const newExpandedPaths = expandedPaths.includes(path) ? expandedPaths : [...expandedPaths, path];
-                    const functionData = node.data as SovdFunction | undefined;
-
-                    set({
-                        selectedPath: path,
-                        expandedPaths: newExpandedPaths,
-                        isLoadingDetails: false,
-                        selectedEntity: {
-                            id: node.id,
-                            name: node.name,
-                            type: 'function',
-                            href: node.href,
-                            description: functionData?.description,
-                        },
-                    });
-                    return;
-                }
-
-                // Handle App entity selection - auto-expand to show virtual folders
-                if (node && node.type === 'app') {
-                    const newExpandedPaths = expandedPaths.includes(path) ? expandedPaths : [...expandedPaths, path];
-                    const appData = node.data as App | undefined;
-
-                    set({
-                        selectedPath: path,
-                        expandedPaths: newExpandedPaths,
-                        isLoadingDetails: false,
-                        selectedEntity: {
-                            id: node.id,
-                            name: node.name,
-                            type: 'app',
-                            href: node.href,
-                            // Pass app-specific data
-                            fqn: appData?.fqn || node.name,
-                            node_name: appData?.node_name,
-                            namespace: appData?.namespace,
-                            component_id: appData?.component_id,
-                        },
-                    });
-                    return;
-                }
-
-                // Handle fault selection - show fault details
-                if (node && node.type === 'fault' && node.data) {
-                    const fault = node.data as Fault;
-                    // Extract entity info from path: /area/component/faults/code
-                    const pathSegments = path.split('/').filter(Boolean);
-                    const entityId = pathSegments.length >= 2 ? pathSegments[pathSegments.length - 3] : '';
-
-                    set({
-                        selectedPath: path,
-                        isLoadingDetails: false,
-                        selectedEntity: {
-                            id: node.id,
-                            name: fault.message,
-                            type: 'fault',
-                            href: node.href,
-                            data: fault,
-                            entityId,
-                        },
-                    });
-                    return;
-                }
-
-                // Handle parameter selection - show parameter detail with data from tree
-                if (node && node.type === 'parameter' && node.data) {
-                    // Extract componentId from path: /area/component/configurations/paramName
-                    const pathSegments = path.split('/').filter(Boolean);
-                    const componentId = (pathSegments.length >= 2 ? pathSegments[1] : pathSegments[0]) ?? '';
-
-                    set({
-                        selectedPath: path,
-                        isLoadingDetails: false,
-                        selectedEntity: {
-                            id: node.id,
-                            name: node.name,
-                            type: 'parameter',
-                            href: node.href,
-                            data: node.data,
-                            componentId,
-                        },
-                    });
-                    return;
-                }
-
-                // Handle service/action selection - show operation detail with data from tree
-                if (node && (node.type === 'service' || node.type === 'action') && node.data) {
-                    // Extract componentId from path: /server/area/component/operations/opName
-                    // or /server/function_name/operations/opName
-                    const pathSegments = path.split('/').filter(Boolean);
-                    const opsIndex = pathSegments.indexOf('operations');
-                    // Component/function ID is the segment right before 'operations'
-                    const componentId = opsIndex > 0 ? pathSegments[opsIndex - 1] : (pathSegments[0] ?? '');
-
-                    set({
-                        selectedPath: path,
-                        isLoadingDetails: false,
-                        selectedEntity: {
-                            id: node.id,
-                            name: node.name,
-                            type: node.type,
-                            href: node.href,
-                            data: node.data,
-                            componentId,
-                        },
-                    });
-                    return;
-                }
-
-                set({
-                    selectedPath: path,
-                    isLoadingDetails: true,
-                    selectedEntity: null,
-                });
-
-                try {
-                    // Convert tree path to API path (remove /server prefix)
-                    const apiPath = path.replace(/^\/server/, '');
-                    const details = await client.getEntityDetails(apiPath);
-                    set({ selectedEntity: details, isLoadingDetails: false });
-                } catch (error) {
-                    const message = error instanceof Error ? error.message : 'Unknown error';
-                    toast.error(`Failed to load entity details for ${path}: ${message}`);
-
-                    // Set fallback entity to allow panel to render
-                    // Infer entity type from path structure
-                    const segments = path.split('/').filter(Boolean);
-                    const id = segments[segments.length - 1] || path;
-                    let inferredType: string;
-                    if (segments.length === 1) {
-                        inferredType = 'area';
-                    } else if (segments.length === 2) {
-                        inferredType = 'component';
-                    } else {
-                        inferredType = 'unknown';
+                for (const handler of handlers) {
+                    const result = handler(ctx);
+                    if (result) {
+                        set({
+                            selectedPath: result.selectedPath,
+                            selectedEntity: result.selectedEntity,
+                            isLoadingDetails: result.isLoadingDetails,
+                            ...(result.expandedPaths && { expandedPaths: result.expandedPaths }),
+                        });
+                        return;
                     }
-
-                    set({
-                        selectedEntity: {
-                            id,
-                            name: id,
-                            type: inferredType,
-                            href: path,
-                            error: 'Failed to load details',
-                        },
-                        isLoadingDetails: false,
-                    });
                 }
+
+                // No handler matched - fall back to API fetch
+                await fetchEntityFromApi(path, client, set);
             },
 
             // Refresh the currently selected entity (re-fetch from server)

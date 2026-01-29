@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useShallow } from 'zustand/shallow';
 import { Database, Zap, Settings, AlertTriangle, Loader2, MessageSquare } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -33,13 +33,29 @@ interface EntityResourceTabsProps {
     onNavigate?: (path: string) => void;
 }
 
+/** Track which resources have been loaded */
+interface LoadedResources {
+    data: boolean;
+    operations: boolean;
+    configurations: boolean;
+    faults: boolean;
+}
+
 /**
  * Reusable component for displaying entity resources (data, operations, configurations, faults)
- * Works with areas, components, apps, and functions
+ * Works with areas, components, apps, and functions.
+ *
+ * Resources are lazy-loaded per tab to avoid unnecessary API calls.
  */
 export function EntityResourceTabs({ entityId, entityType, basePath, onNavigate }: EntityResourceTabsProps) {
     const [activeTab, setActiveTab] = useState<ResourceTab>('data');
     const [isLoading, setIsLoading] = useState(false);
+    const [loadedTabs, setLoadedTabs] = useState<LoadedResources>({
+        data: false,
+        operations: false,
+        configurations: false,
+        faults: false,
+    });
     const [data, setData] = useState<ComponentTopic[]>([]);
     const [operations, setOperations] = useState<Operation[]>([]);
     const [configurations, setConfigurations] = useState<Parameter[]>([]);
@@ -52,32 +68,55 @@ export function EntityResourceTabs({ entityId, entityType, basePath, onNavigate 
         }))
     );
 
-    useEffect(() => {
-        const loadResources = async () => {
-            if (!client) return;
+    // Lazy load resources for the active tab
+    const loadTabResources = useCallback(
+        async (tab: ResourceTab) => {
+            if (!client || loadedTabs[tab]) return;
+
             setIsLoading(true);
-
             try {
-                const [dataRes, opsRes, configRes, faultsRes] = await Promise.all([
-                    client.getEntityData(entityType, entityId).catch(() => [] as ComponentTopic[]),
-                    client.listOperations(entityId, entityType).catch(() => [] as Operation[]),
-                    client.listConfigurations(entityId, entityType).catch(() => ({ parameters: [] })),
-                    client.listEntityFaults(entityType, entityId).catch(() => ({ items: [] })),
-                ]);
-
-                setData(dataRes);
-                setOperations(opsRes);
-                setConfigurations(configRes.parameters || []);
-                setFaults(faultsRes.items || []);
+                switch (tab) {
+                    case 'data': {
+                        const dataRes = await client
+                            .getEntityData(entityType, entityId)
+                            .catch(() => [] as ComponentTopic[]);
+                        setData(dataRes);
+                        break;
+                    }
+                    case 'operations': {
+                        const opsRes = await client.listOperations(entityId, entityType).catch(() => [] as Operation[]);
+                        setOperations(opsRes);
+                        break;
+                    }
+                    case 'configurations': {
+                        const configRes = await client
+                            .listConfigurations(entityId, entityType)
+                            .catch(() => ({ parameters: [] }));
+                        setConfigurations(configRes.parameters || []);
+                        break;
+                    }
+                    case 'faults': {
+                        const faultsRes = await client
+                            .listEntityFaults(entityType, entityId)
+                            .catch(() => ({ items: [] }));
+                        setFaults(faultsRes.items || []);
+                        break;
+                    }
+                }
+                setLoadedTabs((prev) => ({ ...prev, [tab]: true }));
             } catch (error) {
-                console.error('Failed to load entity resources:', error);
+                console.error(`Failed to load ${tab} resources:`, error);
             } finally {
                 setIsLoading(false);
             }
-        };
+        },
+        [client, entityId, entityType, loadedTabs]
+    );
 
-        loadResources();
-    }, [client, entityId, entityType]);
+    // Load resources when tab changes
+    useEffect(() => {
+        loadTabResources(activeTab);
+    }, [activeTab, loadTabResources]);
 
     const handleNavigate = (path: string) => {
         if (onNavigate) {

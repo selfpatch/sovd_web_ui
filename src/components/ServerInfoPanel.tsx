@@ -108,6 +108,9 @@ export function ServerInfoPanel() {
         );
     }
 
+    // Extract first SOVD info entry for cleaner access
+    const sovdInfo = versionInfo?.sovd_info?.[0];
+
     return (
         <div className="space-y-6">
             {/* Server Overview */}
@@ -119,9 +122,7 @@ export function ServerInfoPanel() {
                         </div>
                         <div>
                             <CardTitle className="text-lg">
-                                {versionInfo?.sovd_info?.[0]?.vendor_info?.name ||
-                                    capabilities?.server_name ||
-                                    'SOVD Server'}
+                                {sovdInfo?.vendor_info?.name || capabilities?.server_name || 'SOVD Server'}
                             </CardTitle>
                             <CardDescription className="flex items-center gap-2 flex-wrap">
                                 <Badge variant="outline" className="text-green-600 border-green-300">
@@ -139,13 +140,13 @@ export function ServerInfoPanel() {
                         <div className="p-3 rounded-lg bg-muted/50">
                             <div className="text-sm text-muted-foreground mb-1">SOVD Version</div>
                             <p className="font-mono text-sm">
-                                {versionInfo?.sovd_info?.[0]?.version || capabilities?.sovd_version || 'Unknown'}
+                                {sovdInfo?.version || capabilities?.sovd_version || 'Unknown'}
                             </p>
                         </div>
-                        {versionInfo?.sovd_info?.[0]?.vendor_info?.version && (
+                        {sovdInfo?.vendor_info?.version && (
                             <div className="p-3 rounded-lg bg-muted/50">
                                 <div className="text-sm text-muted-foreground mb-1">Implementation Version</div>
-                                <p className="font-mono text-sm">{versionInfo.sovd_info[0].vendor_info.version}</p>
+                                <p className="font-mono text-sm">{sovdInfo.vendor_info.version}</p>
                             </div>
                         )}
                         {capabilities?.server_version && (
@@ -154,10 +155,10 @@ export function ServerInfoPanel() {
                                 <p className="font-mono text-sm">{capabilities.server_version}</p>
                             </div>
                         )}
-                        {versionInfo?.sovd_info?.[0]?.base_uri && (
+                        {sovdInfo?.base_uri && (
                             <div className="p-3 rounded-lg bg-muted/50">
                                 <div className="text-sm text-muted-foreground mb-1">Base URI</div>
-                                <p className="font-mono text-sm">{versionInfo.sovd_info[0].base_uri}</p>
+                                <p className="font-mono text-sm">{sovdInfo.base_uri}</p>
                             </div>
                         )}
                     </div>

@@ -268,18 +268,18 @@ function DashboardSkeleton() {
  * Faults Dashboard - displays all faults across the system
  *
  * Features:
- * - Real-time updates via polling (SSE support planned)
+ * - Real-time updates via shared store polling
  * - Filtering by severity and status
  * - Grouping by entity
  * - Clear fault actions
+ *
+ * Uses shared faults state from useAppStore to avoid duplicate API calls
+ * when both FaultsDashboard and FaultsCountBadge are visible.
  */
 export function FaultsDashboard() {
-    const [faults, setFaults] = useState<Fault[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [autoRefresh, setAutoRefresh] = useState(true);
     const [clearingCodes, setClearingCodes] = useState<Set<string>>(new Set());
-    const [error, setError] = useState<string | null>(null);
 
     // Filters
     const [severityFilters, setSeverityFilters] = useState<Set<FaultSeverity>>(
@@ -288,52 +288,41 @@ export function FaultsDashboard() {
     const [statusFilters, setStatusFilters] = useState<Set<FaultStatus>>(new Set(['active', 'pending']));
     const [groupByEntity, setGroupByEntity] = useState(true);
 
-    const { client, isConnected, clearFault } = useAppStore(
+    // Use shared faults state from store
+    const { faults, isLoadingFaults, isConnected, fetchFaults, clearFault } = useAppStore(
         useShallow((state) => ({
-            client: state.client,
+            faults: state.faults,
+            isLoadingFaults: state.isLoadingFaults,
             isConnected: state.isConnected,
+            fetchFaults: state.fetchFaults,
             clearFault: state.clearFault,
         }))
     );
 
-    // Load faults
-    const loadFaults = useCallback(
-        async (showRefreshIndicator = false) => {
-            if (!client || !isConnected) return;
-
-            if (showRefreshIndicator) {
-                setIsRefreshing(true);
-            }
-            setError(null);
-
-            try {
-                const response = await client.listAllFaults();
-                setFaults(response.items || []);
-            } catch (err) {
-                setError(err instanceof Error ? err.message : 'Failed to load faults');
-            } finally {
-                setIsLoading(false);
-                setIsRefreshing(false);
-            }
-        },
-        [client, isConnected]
-    );
-
-    // Initial load
+    // Load faults on mount
     useEffect(() => {
-        loadFaults();
-    }, [loadFaults]);
+        if (isConnected) {
+            fetchFaults();
+        }
+    }, [isConnected, fetchFaults]);
 
-    // Auto-refresh polling
+    // Auto-refresh polling using shared store
     useEffect(() => {
         if (!autoRefresh || !isConnected) return;
 
         const interval = setInterval(() => {
-            loadFaults(false);
+            fetchFaults();
         }, DEFAULT_POLL_INTERVAL);
 
         return () => clearInterval(interval);
-    }, [autoRefresh, isConnected, loadFaults]);
+    }, [autoRefresh, isConnected, fetchFaults]);
+
+    // Manual refresh handler
+    const handleRefresh = useCallback(async () => {
+        setIsRefreshing(true);
+        await fetchFaults();
+        setIsRefreshing(false);
+    }, [fetchFaults]);
 
     // Clear fault handler
     const handleClear = useCallback(
@@ -350,7 +339,7 @@ export function FaultsDashboard() {
                     await clearFault(entityGroup, fault.entity_id, code);
                 }
                 // Reload faults after clearing
-                await loadFaults(true);
+                await fetchFaults();
             } finally {
                 setClearingCodes((prev) => {
                     const next = new Set(prev);
@@ -359,7 +348,7 @@ export function FaultsDashboard() {
                 });
             }
         },
-        [faults, loadFaults, clearFault]
+        [faults, fetchFaults, clearFault]
     );
 
     // Filter faults
@@ -437,7 +426,7 @@ export function FaultsDashboard() {
         );
     }
 
-    if (isLoading) {
+    if (isLoadingFaults && faults.length === 0) {
         return (
             <div className="space-y-6">
                 <Card>
@@ -484,10 +473,12 @@ export function FaultsDashboard() {
                             <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => loadFaults(true)}
-                                disabled={isRefreshing}
+                                onClick={handleRefresh}
+                                disabled={isRefreshing || isLoadingFaults}
                             >
-                                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                                <RefreshCw
+                                    className={`w-4 h-4 ${isRefreshing || isLoadingFaults ? 'animate-spin' : ''}`}
+                                />
                             </Button>
                         </div>
                     </div>
@@ -617,19 +608,7 @@ export function FaultsDashboard() {
             </Card>
 
             {/* Faults List */}
-            {error ? (
-                <Card>
-                    <CardContent className="pt-6">
-                        <div className="text-center text-destructive">
-                            <AlertCircle className="w-8 h-8 mx-auto mb-2" />
-                            <p className="text-sm">{error}</p>
-                            <Button variant="outline" size="sm" className="mt-2" onClick={() => loadFaults(true)}>
-                                Retry
-                            </Button>
-                        </div>
-                    </CardContent>
-                </Card>
-            ) : filteredFaults.length === 0 ? (
+            {filteredFaults.length === 0 ? (
                 <Card>
                     <CardContent className="pt-6">
                         <div className="flex flex-col items-center justify-center text-muted-foreground py-8">
@@ -678,45 +657,37 @@ export function FaultsDashboard() {
 
 /**
  * Faults count badge for sidebar
- * Polls for fault count only when visible via document.hidden check
+ *
+ * Uses shared faults state from useAppStore to avoid duplicate polling.
+ * The main polling happens in FaultsDashboard or when faults are fetched elsewhere.
  */
 export function FaultsCountBadge() {
-    const [count, setCount] = useState(0);
-
-    const { client, isConnected } = useAppStore(
+    const { faults, isConnected, fetchFaults } = useAppStore(
         useShallow((state) => ({
-            client: state.client,
+            faults: state.faults,
             isConnected: state.isConnected,
+            fetchFaults: state.fetchFaults,
         }))
     );
 
+    // Trigger initial fetch and set up polling when connected
     useEffect(() => {
-        const loadCount = async () => {
-            // Skip polling when document is hidden (tab not visible)
-            if (document.hidden) return;
-            if (!client || !isConnected) {
-                setCount(0);
-                return;
+        if (!isConnected) return;
+
+        // Initial fetch
+        fetchFaults();
+
+        // Poll for updates when document is visible
+        const interval = setInterval(() => {
+            if (!document.hidden) {
+                fetchFaults();
             }
+        }, DEFAULT_POLL_INTERVAL);
 
-            try {
-                const response = await client.listAllFaults();
-                const activeCount = (response.items || []).filter(
-                    (f) => f.status === 'active' && (f.severity === 'critical' || f.severity === 'error')
-                ).length;
-                setCount(activeCount);
-            } catch {
-                setCount(0);
-            }
-        };
-
-        loadCount();
-        const interval = setInterval(loadCount, DEFAULT_POLL_INTERVAL);
-
-        // Also listen for visibility changes to pause/resume polling
+        // Also listen for visibility changes to refresh when tab becomes visible
         const handleVisibilityChange = () => {
             if (!document.hidden) {
-                loadCount();
+                fetchFaults();
             }
         };
         document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -725,7 +696,13 @@ export function FaultsCountBadge() {
             clearInterval(interval);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
-    }, [client, isConnected]);
+    }, [isConnected, fetchFaults]);
+
+    // Count active critical/error faults
+    const count = useMemo(() => {
+        return faults.filter((f) => f.status === 'active' && (f.severity === 'critical' || f.severity === 'error'))
+            .length;
+    }, [faults]);
 
     if (count === 0) return null;
 
