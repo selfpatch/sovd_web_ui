@@ -126,11 +126,11 @@ function ComponentTabContent({
                 />
             );
         case 'operations':
-            return <OperationsPanel key={entityId} entityId={entityId} entityType={entityType} />;
+            return <OperationsPanel entityId={entityId} entityType={entityType} />;
         case 'configurations':
-            return <ConfigurationPanel key={entityId} entityId={entityId} entityType={entityType} />;
+            return <ConfigurationPanel entityId={entityId} entityType={entityType} />;
         case 'faults':
-            return <FaultsPanel key={entityId} entityId={entityId} entityType={entityType} />;
+            return <FaultsPanel entityId={entityId} entityType={entityType} />;
         default:
             return null;
     }
