@@ -44,7 +44,14 @@ function mapFaultEntityTypeToResourceType(entityType: string): SovdResourceEntit
     if (type === 'area' || type === 'areas') return 'areas';
     if (type === 'app' || type === 'apps') return 'apps';
     if (type === 'function' || type === 'functions') return 'functions';
-    // Default to components for 'component', 'components', or unknown types
+    if (type === 'component' || type === 'components') return 'components';
+
+    // Log unexpected entity types to aid debugging
+    console.warn(
+        '[FaultsDashboard] Unexpected fault entity_type received:',
+        entityType,
+        '- defaulting to "components".'
+    );
     return 'components';
 }
 
