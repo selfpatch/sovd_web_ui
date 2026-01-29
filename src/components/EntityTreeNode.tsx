@@ -41,7 +41,7 @@ interface EntityTreeNodeProps {
  * - App: Cpu (ROS 2 node)
  * - Function: GitBranch (capability grouping)
  */
-function getEntityIcon(type: string, _data?: unknown, isExpanded?: boolean) {
+function getEntityIcon(type: string, isExpanded?: boolean) {
     switch ((type || '').toLowerCase()) {
         // Entity types
         case 'area':
@@ -82,7 +82,7 @@ function getEntityIcon(type: string, _data?: unknown, isExpanded?: boolean) {
 /**
  * Get color class for entity type
  */
-function getEntityColor(type: string, _data?: unknown, isSelected?: boolean): string {
+function getEntityColor(type: string, isSelected?: boolean): string {
     if (isSelected) return 'text-primary';
 
     switch (type.toLowerCase()) {
@@ -144,8 +144,8 @@ export function EntityTreeNode({ node, depth }: EntityTreeNodeProps) {
     const isLoading = loadingPaths.includes(node.path);
     const isSelected = selectedPath === node.path;
     const hasChildren = node.hasChildren !== false; // Default to true if not specified
-    const Icon = getEntityIcon(node.type, node.data, isExpanded);
-    const iconColorClass = getEntityColor(node.type, node.data, isSelected);
+    const Icon = getEntityIcon(node.type, isExpanded);
+    const iconColorClass = getEntityColor(node.type, isSelected);
 
     // Get topic direction info if available
     const topicData = isTopicNodeData(node.data) ? node.data : null;
