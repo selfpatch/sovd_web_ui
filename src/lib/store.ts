@@ -593,6 +593,14 @@ export const useAppStore = create<AppState>()(
                         // Functional view: Functions -> Apps (hosts)
                         const functions = await client.listFunctions().catch(() => [] as SovdFunction[]);
                         children = functions.map((fn: SovdFunction) => {
+                            // Validate function data quality
+                            if (!fn.id || (typeof fn.id !== 'string' && typeof fn.id !== 'number')) {
+                                console.warn('[Store] Malformed function data - missing or invalid id:', fn);
+                            }
+                            if (!fn.name && !fn.id) {
+                                console.warn('[Store] Malformed function data - missing both name and id:', fn);
+                            }
+
                             const fnName = typeof fn.name === 'string' ? fn.name : fn.id || 'Unknown';
                             const fnId = typeof fn.id === 'string' ? fn.id : String(fn.id);
                             return {
