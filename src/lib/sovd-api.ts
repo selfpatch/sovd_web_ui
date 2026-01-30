@@ -1066,8 +1066,9 @@ export class SovdApiClient {
             return 'succeeded';
         }
 
-        // Fallback to running for unknown statuses
-        return 'running';
+        // Fallback to a neutral state for unknown statuses and log for investigation
+        console.warn('[SovdApiClient] Unknown execution status encountered', { apiStatus, ros2Status });
+        return 'pending';
     }
 
     /**

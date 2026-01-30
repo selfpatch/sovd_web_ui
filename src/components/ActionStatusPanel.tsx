@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { useShallow } from 'zustand/shallow';
 import { Activity, RefreshCw, XCircle, CheckCircle, AlertCircle, Clock, Navigation } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -6,6 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAppStore, type AppState, type TrackedExecution } from '@/lib/store';
 import type { ExecutionStatus } from '@/lib/types';
+
+/** Delay before hiding terminal state panel (ms) */
+const TERMINAL_STATE_DISPLAY_DELAY_MS = 3000;
 
 interface ActionStatusPanelProps {
     /** Execution ID to display and monitor */
@@ -96,6 +99,9 @@ export function ActionStatusPanel({ executionId }: ActionStatusPanelProps) {
     const isActive = execution ? isActiveStatus(execution.status) : false;
     const canCancel = execution && ['pending', 'running'].includes(execution.status);
 
+    // Track whether to hide terminal state panel (with delay)
+    const [shouldHide, setShouldHide] = useState(false);
+
     // Manual refresh
     const handleRefresh = useCallback(() => {
         if (execution) {
@@ -118,8 +124,23 @@ export function ActionStatusPanel({ executionId }: ActionStatusPanelProps) {
         }
     }, [autoRefreshExecutions, isActive, startExecutionPolling]);
 
-    // Don't render if execution is terminal - History shows final status
-    if (!execution || isTerminal) {
+    // Delay hiding terminal state so users can see the final status
+    useEffect(() => {
+        if (isTerminal && !shouldHide) {
+            const timer = setTimeout(() => {
+                setShouldHide(true);
+            }, TERMINAL_STATE_DISPLAY_DELAY_MS);
+            return () => clearTimeout(timer);
+        }
+        // Reset shouldHide if execution becomes active again (e.g., new execution)
+        if (!isTerminal && shouldHide) {
+            setShouldHide(false);
+        }
+        return undefined;
+    }, [isTerminal, shouldHide]);
+
+    // Don't render if no execution or if terminal state delay has passed
+    if (!execution || (isTerminal && shouldHide)) {
         return null;
     }
 

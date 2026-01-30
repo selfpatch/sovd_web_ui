@@ -450,14 +450,16 @@ export interface CreateExecutionRequest {
  * Response from POST /{entity}/operations/{op}/executions
  */
 export interface CreateExecutionResponse {
-    /** Execution ID for tracking */
-    id: string;
+    /** Execution ID for tracking (optional for service calls which complete immediately) */
+    id?: string;
     /** Initial execution status */
     status: ExecutionStatus;
     /** Operation kind (service or action) */
     kind: OperationKind;
     /** Result data (for synchronous service calls) */
     result?: unknown;
+    /** Parameters/output data (for service call responses) */
+    parameters?: unknown;
     /** Error message if execution creation failed */
     error?: string;
 }
