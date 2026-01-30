@@ -412,7 +412,7 @@ export interface ComponentWithOperations {
 /**
  * Execution status values for SOVD operations
  */
-export type ExecutionStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled';
+export type ExecutionStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled' | 'completed';
 
 /**
  * Execution resource representing an operation invocation (SOVD-compliant)

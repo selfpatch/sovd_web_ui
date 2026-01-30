@@ -20,8 +20,21 @@ import type {
 import { createSovdClient, type SovdApiClient, type SovdResourceEntityType } from './sovd-api';
 
 const STORAGE_KEY = 'sovd_web_ui_server_url';
+const EXECUTION_POLL_INTERVAL_MS = 1000;
 
 export type TreeViewMode = 'logical' | 'functional';
+
+/**
+ * Extended Execution with metadata needed for polling
+ */
+export interface TrackedExecution extends Execution {
+    /** Entity ID for API calls */
+    entityId: string;
+    /** Operation name for API calls */
+    operationName: string;
+    /** Entity type for API calls */
+    entityType: SovdResourceEntityType;
+}
 
 export interface AppState {
     // Connection state
@@ -53,8 +66,9 @@ export interface AppState {
     isLoadingOperations: boolean;
 
     // Active executions (for monitoring async actions) - SOVD Execution Model
-    activeExecutions: Map<string, Execution>; // executionId -> execution
-    autoRefreshExecutions: boolean; // checkbox state for auto-refresh
+    activeExecutions: Map<string, TrackedExecution>; // executionId -> tracked execution with metadata
+    autoRefreshExecutions: boolean; // flag for auto-refresh polling
+    executionPollingIntervalId: ReturnType<typeof setInterval> | null; // polling interval ID
 
     // Faults state (diagnostic trouble codes)
     faults: Fault[];
@@ -107,6 +121,8 @@ export interface AppState {
         entityType?: SovdResourceEntityType
     ) => Promise<boolean>;
     setAutoRefreshExecutions: (enabled: boolean) => void;
+    startExecutionPolling: () => void;
+    stopExecutionPolling: () => void;
 
     // Faults actions
     fetchFaults: () => Promise<void>;
@@ -503,7 +519,8 @@ export const useAppStore = create<AppState>()(
 
             // Active executions state - SOVD Execution model
             activeExecutions: new Map(),
-            autoRefreshExecutions: false,
+            autoRefreshExecutions: true,
+            executionPollingIntervalId: null,
 
             // Faults state
             faults: [],
@@ -550,6 +567,9 @@ export const useAppStore = create<AppState>()(
 
             // Disconnect from server
             disconnect: () => {
+                // Stop execution polling
+                get().stopExecutionPolling();
+
                 set({
                     serverUrl: null,
                     baseEndpoint: '',
@@ -562,6 +582,7 @@ export const useAppStore = create<AppState>()(
                     expandedPaths: [],
                     selectedPath: null,
                     selectedEntity: null,
+                    activeExecutions: new Map(),
                 });
             },
 
@@ -1109,19 +1130,36 @@ export const useAppStore = create<AppState>()(
                 try {
                     const result = await client.createExecution(entityId, operationName, request, entityType);
 
-                    if (result.kind === 'action' && !result.error) {
-                        // Track the new execution for actions
-                        const newExecutions = new Map(activeExecutions);
-                        newExecutions.set(result.id, {
+                    // Track all executions with an ID (both running and completed/failed)
+                    // Actions always get an ID, services may or may not depending on backend
+                    if (result.id && !result.error) {
+                        // Track the new execution for actions with metadata for polling
+                        const trackedExecution: TrackedExecution = {
                             id: result.id,
                             status: result.status,
                             created_at: new Date().toISOString(),
                             result: result.result,
-                        });
-                        set({ activeExecutions: newExecutions });
-                        toast.success(`Action execution ${result.id.slice(0, 8)}... started`);
-                    } else if (result.kind === 'service' && !result.error) {
-                        toast.success(`Service ${operationName} executed successfully`);
+                            // Metadata for polling
+                            entityId,
+                            operationName,
+                            entityType,
+                        };
+                        const newExecutions = new Map(activeExecutions);
+                        newExecutions.set(result.id, trackedExecution);
+                        // Enable auto-refresh and start polling when new execution is created
+                        set({ activeExecutions: newExecutions, autoRefreshExecutions: true });
+                        // Call directly from get() to ensure fresh state
+                        get().startExecutionPolling();
+
+                        // Show appropriate toast based on status
+                        const isRunning = result.status === 'pending' || result.status === 'running';
+                        if (isRunning) {
+                            toast.success(`Action execution ${result.id.slice(0, 8)}... started`);
+                        } else if (result.status === 'failed') {
+                            toast.error(`Action execution ${result.id.slice(0, 8)}... failed`);
+                        } else if (result.status === 'completed' || result.status === 'succeeded') {
+                            toast.success(`Action execution ${result.id.slice(0, 8)}... completed`);
+                        }
                     } else if (result.error) {
                         toast.error(`Operation failed: ${result.error}`);
                     }
@@ -1145,11 +1183,24 @@ export const useAppStore = create<AppState>()(
 
                 try {
                     const execution = await client.getExecution(entityId, operationName, executionId, entityType);
+                    // Preserve metadata when updating execution
+                    const trackedExecution: TrackedExecution = {
+                        ...execution,
+                        entityId,
+                        operationName,
+                        entityType,
+                    };
                     const newExecutions = new Map(activeExecutions);
-                    newExecutions.set(executionId, execution);
+                    newExecutions.set(executionId, trackedExecution);
                     set({ activeExecutions: newExecutions });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
+                    console.error('[refreshExecutionStatus] Error:', message, {
+                        entityId,
+                        operationName,
+                        executionId,
+                        entityType,
+                    });
                     toast.error(`Failed to refresh execution status: ${message}`);
                 }
             },
@@ -1165,8 +1216,15 @@ export const useAppStore = create<AppState>()(
 
                 try {
                     const execution = await client.cancelExecution(entityId, operationName, executionId, entityType);
+                    // Preserve metadata when updating execution
+                    const trackedExecution: TrackedExecution = {
+                        ...execution,
+                        entityId,
+                        operationName,
+                        entityType,
+                    };
                     const newExecutions = new Map(activeExecutions);
-                    newExecutions.set(executionId, execution);
+                    newExecutions.set(executionId, trackedExecution);
                     set({ activeExecutions: newExecutions });
                     toast.success(`Cancel request sent for execution ${executionId.slice(0, 8)}...`);
                     return true;
@@ -1179,6 +1237,77 @@ export const useAppStore = create<AppState>()(
 
             setAutoRefreshExecutions: (enabled: boolean) => {
                 set({ autoRefreshExecutions: enabled });
+                if (enabled) {
+                    get().startExecutionPolling();
+                } else {
+                    get().stopExecutionPolling();
+                }
+            },
+
+            startExecutionPolling: () => {
+                const { executionPollingIntervalId, autoRefreshExecutions, client } = get();
+
+                // Don't start if already running, disabled, or no client
+                if (executionPollingIntervalId || !autoRefreshExecutions || !client) {
+                    return;
+                }
+
+                const intervalId = setInterval(async () => {
+                    const { activeExecutions, autoRefreshExecutions: stillEnabled, client: currentClient } = get();
+
+                    // Stop polling if disabled or no client
+                    if (!stillEnabled || !currentClient) {
+                        get().stopExecutionPolling();
+                        return;
+                    }
+
+                    // Find all running executions
+                    const runningExecutions = Array.from(activeExecutions.values()).filter(
+                        (exec) => exec.status === 'pending' || exec.status === 'running'
+                    );
+
+                    // If no running executions, stop polling
+                    if (runningExecutions.length === 0) {
+                        get().stopExecutionPolling();
+                        return;
+                    }
+
+                    // Refresh all running executions in parallel
+                    await Promise.all(
+                        runningExecutions.map(async (exec) => {
+                            try {
+                                const updated = await currentClient.getExecution(
+                                    exec.entityId,
+                                    exec.operationName,
+                                    exec.id,
+                                    exec.entityType
+                                );
+                                const { activeExecutions: currentExecutions } = get();
+                                const trackedExec: TrackedExecution = {
+                                    ...updated,
+                                    entityId: exec.entityId,
+                                    operationName: exec.operationName,
+                                    entityType: exec.entityType,
+                                };
+                                const newExecutions = new Map(currentExecutions);
+                                newExecutions.set(exec.id, trackedExec);
+                                set({ activeExecutions: newExecutions });
+                            } catch (error) {
+                                console.error('[pollExecution] Error:', error, { executionId: exec.id });
+                            }
+                        })
+                    );
+                }, EXECUTION_POLL_INTERVAL_MS);
+
+                set({ executionPollingIntervalId: intervalId });
+            },
+
+            stopExecutionPolling: () => {
+                const { executionPollingIntervalId } = get();
+                if (executionPollingIntervalId) {
+                    clearInterval(executionPollingIntervalId);
+                    set({ executionPollingIntervalId: null });
+                }
             },
 
             // ===========================================================================
