@@ -45,17 +45,30 @@ function isServiceResponse(response: CreateExecutionResponse): boolean {
 function extractResult(response: CreateExecutionResponse): unknown {
     // Service responses: result is directly in the response (often as `parameters`)
     if (isServiceResponse(response)) {
-        // The whole response minus status/error fields is the result for services
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const rawResponse = response as any;
-        if (rawResponse.parameters !== undefined) {
-            return rawResponse.parameters;
+        // Prefer explicit parameters field when present
+        if (response.parameters !== undefined) {
+            return response.parameters;
         }
-        // Return the whole response if no specific result field
-        return response;
+        // Fallback: remove internal envelope fields before returning the result
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { status: _s, kind: _k, error: _e, ...publicResult } = response;
+        return Object.keys(publicResult).length > 0 ? publicResult : undefined;
     }
     // Action responses: result is in the result field
     return response.result;
+}
+
+/**
+ * Get border and background classes based on execution status
+ */
+function getStatusBorderClass(status: ExecutionStatus): string {
+    if (status === 'succeeded' || status === 'completed') {
+        return 'border-green-500/30 bg-green-500/5';
+    }
+    if (status === 'failed') {
+        return 'border-destructive/30 bg-destructive/5';
+    }
+    return 'border-muted bg-muted/5';
 }
 
 export function OperationResponseDisplay({ response, executionId }: OperationResponseProps) {
@@ -71,14 +84,11 @@ export function OperationResponseDisplay({ response, executionId }: OperationRes
     const currentStatus: ExecutionStatus = activeExecution?.status ?? (isService ? 'completed' : response.status);
     const currentResult = activeExecution?.result ?? extractResult(response);
 
-    const isSuccess = currentStatus === 'succeeded' || currentStatus === 'completed';
     const statusConfig = getStatusConfig(currentStatus);
     const StatusIcon = statusConfig.icon;
 
     return (
-        <div
-            className={`rounded-lg border ${isSuccess ? 'border-green-500/30 bg-green-500/5' : currentStatus === 'failed' ? 'border-destructive/30 bg-destructive/5' : 'border-muted bg-muted/5'}`}
-        >
+        <div className={`rounded-lg border ${getStatusBorderClass(currentStatus)}`}>
             {/* Header */}
             <div className="flex items-center gap-3 px-3 py-2 border-b border-inherit">
                 <StatusIcon

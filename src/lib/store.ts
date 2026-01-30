@@ -21,6 +21,7 @@ import { createSovdClient, type SovdApiClient, type SovdResourceEntityType } fro
 
 const STORAGE_KEY = 'sovd_web_ui_server_url';
 const EXECUTION_POLL_INTERVAL_MS = 1000;
+const EXECUTION_CLEANUP_AFTER_MS = 5 * 60 * 1000; // 5 minutes
 
 export type TreeViewMode = 'logical' | 'functional';
 
@@ -34,6 +35,8 @@ export interface TrackedExecution extends Execution {
     operationName: string;
     /** Entity type for API calls */
     entityType: SovdResourceEntityType;
+    /** Timestamp when execution reached terminal state (for cleanup) */
+    completedAt?: number;
 }
 
 export interface AppState {
@@ -1245,13 +1248,15 @@ export const useAppStore = create<AppState>()(
             },
 
             startExecutionPolling: () => {
-                const { executionPollingIntervalId, autoRefreshExecutions, client } = get();
+                // Atomic check: get current state and immediately set to prevent race
+                const state = get();
 
                 // Don't start if already running, disabled, or no client
-                if (executionPollingIntervalId || !autoRefreshExecutions || !client) {
+                if (state.executionPollingIntervalId || !state.autoRefreshExecutions || !state.client) {
                     return;
                 }
 
+                // Create interval immediately and set it atomically
                 const intervalId = setInterval(async () => {
                     const { activeExecutions, autoRefreshExecutions: stillEnabled, client: currentClient } = get();
 
@@ -1259,6 +1264,20 @@ export const useAppStore = create<AppState>()(
                     if (!stillEnabled || !currentClient) {
                         get().stopExecutionPolling();
                         return;
+                    }
+
+                    // Cleanup old completed executions (older than EXECUTION_CLEANUP_AFTER_MS)
+                    const now = Date.now();
+                    const executionsToCleanup = Array.from(activeExecutions.entries()).filter(
+                        ([, exec]) => exec.completedAt && now - exec.completedAt > EXECUTION_CLEANUP_AFTER_MS
+                    );
+
+                    if (executionsToCleanup.length > 0) {
+                        const cleanedExecutions = new Map(activeExecutions);
+                        for (const [id] of executionsToCleanup) {
+                            cleanedExecutions.delete(id);
+                        }
+                        set({ activeExecutions: cleanedExecutions });
                     }
 
                     // Find all running executions
@@ -1272,8 +1291,8 @@ export const useAppStore = create<AppState>()(
                         return;
                     }
 
-                    // Refresh all running executions in parallel
-                    await Promise.all(
+                    // Refresh all running executions in parallel, then batch update
+                    const results = await Promise.all(
                         runningExecutions.map(async (exec) => {
                             try {
                                 const updated = await currentClient.getExecution(
@@ -1282,23 +1301,39 @@ export const useAppStore = create<AppState>()(
                                     exec.id,
                                     exec.entityType
                                 );
-                                const { activeExecutions: currentExecutions } = get();
+                                const isTerminal = ['succeeded', 'failed', 'canceled', 'completed'].includes(
+                                    updated.status
+                                );
                                 const trackedExec: TrackedExecution = {
                                     ...updated,
                                     entityId: exec.entityId,
                                     operationName: exec.operationName,
                                     entityType: exec.entityType,
+                                    completedAt: isTerminal ? Date.now() : undefined,
                                 };
-                                const newExecutions = new Map(currentExecutions);
-                                newExecutions.set(exec.id, trackedExec);
-                                set({ activeExecutions: newExecutions });
+                                return { id: exec.id, execution: trackedExec };
                             } catch (error) {
                                 console.error('[pollExecution] Error:', error, { executionId: exec.id });
+                                return null;
                             }
                         })
                     );
+
+                    // Batch update all successful results in a single set() call
+                    const validResults = results.filter(
+                        (r): r is { id: string; execution: TrackedExecution } => r !== null
+                    );
+                    if (validResults.length > 0) {
+                        const { activeExecutions: currentExecutions } = get();
+                        const newExecutions = new Map(currentExecutions);
+                        for (const { id, execution } of validResults) {
+                            newExecutions.set(id, execution);
+                        }
+                        set({ activeExecutions: newExecutions });
+                    }
                 }, EXECUTION_POLL_INTERVAL_MS);
 
+                // Set interval ID immediately to prevent race condition
                 set({ executionPollingIntervalId: intervalId });
             },
 
