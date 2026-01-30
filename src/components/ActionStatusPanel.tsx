@@ -1,17 +1,15 @@
 import { useEffect, useCallback } from 'react';
 import { useShallow } from 'zustand/shallow';
-import { Activity, RefreshCw, XCircle, CheckCircle, AlertCircle, Clock, Loader2, Navigation } from 'lucide-react';
+import { Activity, RefreshCw, XCircle, CheckCircle, AlertCircle, Clock, Navigation } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useAppStore, type AppState } from '@/lib/store';
-import type { ExecutionStatus, SovdResourceEntityType } from '@/lib/types';
+import { useAppStore, type AppState, type TrackedExecution } from '@/lib/store';
+import type { ExecutionStatus } from '@/lib/types';
 
 interface ActionStatusPanelProps {
-    entityId: string;
-    operationName: string;
+    /** Execution ID to display and monitor */
     executionId: string;
-    entityType?: SovdResourceEntityType;
 }
 
 /**
@@ -34,6 +32,7 @@ function getStatusStyle(status: ExecutionStatus): {
                 bgColor: 'bg-blue-500/10',
             };
         case 'succeeded':
+        case 'completed':
             return {
                 variant: 'default',
                 icon: CheckCircle,
@@ -68,7 +67,7 @@ function getStatusStyle(status: ExecutionStatus): {
  * Check if status is terminal (no more updates expected)
  */
 function isTerminalStatus(status: ExecutionStatus): boolean {
-    return ['succeeded', 'canceled', 'failed'].includes(status);
+    return ['succeeded', 'canceled', 'failed', 'completed'].includes(status);
 }
 
 /**
@@ -78,29 +77,19 @@ function isActiveStatus(status: ExecutionStatus): boolean {
     return ['pending', 'running'].includes(status);
 }
 
-export function ActionStatusPanel({
-    entityId,
-    operationName,
-    executionId,
-    entityType = 'components',
-}: ActionStatusPanelProps) {
-    const {
-        activeExecutions,
-        autoRefreshExecutions,
-        refreshExecutionStatus,
-        cancelExecution,
-        setAutoRefreshExecutions,
-    } = useAppStore(
-        useShallow((state: AppState) => ({
-            activeExecutions: state.activeExecutions,
-            autoRefreshExecutions: state.autoRefreshExecutions,
-            refreshExecutionStatus: state.refreshExecutionStatus,
-            cancelExecution: state.cancelExecution,
-            setAutoRefreshExecutions: state.setAutoRefreshExecutions,
-        }))
-    );
+export function ActionStatusPanel({ executionId }: ActionStatusPanelProps) {
+    const { activeExecutions, autoRefreshExecutions, cancelExecution, startExecutionPolling, refreshExecutionStatus } =
+        useAppStore(
+            useShallow((state: AppState) => ({
+                activeExecutions: state.activeExecutions,
+                autoRefreshExecutions: state.autoRefreshExecutions,
+                cancelExecution: state.cancelExecution,
+                startExecutionPolling: state.startExecutionPolling,
+                refreshExecutionStatus: state.refreshExecutionStatus,
+            }))
+        );
 
-    const execution = activeExecutions.get(executionId);
+    const execution = activeExecutions.get(executionId) as TrackedExecution | undefined;
     const statusStyle = execution ? getStatusStyle(execution.status) : null;
     const StatusIcon = statusStyle?.icon || Clock;
     const isTerminal = execution ? isTerminalStatus(execution.status) : false;
@@ -109,38 +98,29 @@ export function ActionStatusPanel({
 
     // Manual refresh
     const handleRefresh = useCallback(() => {
-        refreshExecutionStatus(entityId, operationName, executionId, entityType);
-    }, [entityId, operationName, executionId, refreshExecutionStatus, entityType]);
+        if (execution) {
+            refreshExecutionStatus(execution.entityId, execution.operationName, executionId, execution.entityType);
+        }
+    }, [execution, executionId, refreshExecutionStatus]);
 
     // Cancel action
     const handleCancel = useCallback(async () => {
-        await cancelExecution(entityId, operationName, executionId, entityType);
-    }, [entityId, operationName, executionId, cancelExecution, entityType]);
-
-    // Auto-refresh effect
-    useEffect(() => {
-        if (!autoRefreshExecutions || isTerminal) return;
-
-        const interval = setInterval(() => {
-            refreshExecutionStatus(entityId, operationName, executionId, entityType);
-        }, 1000); // Refresh every second
-
-        return () => clearInterval(interval);
-    }, [autoRefreshExecutions, isTerminal, entityId, operationName, executionId, refreshExecutionStatus, entityType]);
-
-    // Initial fetch
-    useEffect(() => {
-        if (!execution) {
-            refreshExecutionStatus(entityId, operationName, executionId, entityType);
+        if (execution) {
+            await cancelExecution(execution.entityId, execution.operationName, executionId, execution.entityType);
         }
-    }, [executionId, execution, entityId, operationName, refreshExecutionStatus, entityType]);
+    }, [execution, executionId, cancelExecution]);
 
-    if (!execution) {
-        return (
-            <div className="flex items-center justify-center p-4">
-                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-            </div>
-        );
+    // Start polling on mount if auto-refresh is enabled and execution is active
+    // Polling is managed by the store, so this just ensures it's started
+    useEffect(() => {
+        if (autoRefreshExecutions && isActive) {
+            startExecutionPolling();
+        }
+    }, [autoRefreshExecutions, isActive, startExecutionPolling]);
+
+    // Don't render if execution is terminal - History shows final status
+    if (!execution || isTerminal) {
+        return null;
     }
 
     return (
@@ -167,23 +147,6 @@ export function ActionStatusPanel({
                     </div>
 
                     <div className="flex items-center gap-2">
-                        {/* Auto-refresh checkbox */}
-                        <label
-                            htmlFor={`auto-refresh-${executionId}`}
-                            className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer"
-                        >
-                            <input
-                                id={`auto-refresh-${executionId}`}
-                                type="checkbox"
-                                checked={autoRefreshExecutions}
-                                onChange={(e) => setAutoRefreshExecutions(e.target.checked)}
-                                className="rounded border-muted-foreground focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
-                                disabled={isTerminal}
-                                aria-label="Auto-refresh execution status"
-                            />
-                            Auto-refresh
-                        </label>
-
                         {/* Manual refresh */}
                         <Button
                             variant="ghost"
@@ -261,7 +224,8 @@ export function ActionStatusPanel({
                     <div className={`text-xs ${statusStyle?.color} flex items-center gap-1.5 font-medium`}>
                         <StatusIcon className="w-4 h-4" />
                         <span>
-                            {execution.status === 'succeeded' && 'Execution completed successfully'}
+                            {(execution.status === 'succeeded' || execution.status === 'completed') &&
+                                'Execution completed successfully'}
                             {execution.status === 'canceled' && 'Execution was canceled'}
                             {execution.status === 'failed' && 'Execution failed'}
                         </span>

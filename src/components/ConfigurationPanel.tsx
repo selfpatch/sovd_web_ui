@@ -367,7 +367,7 @@ export function ConfigurationPanel({ entityId, highlightParam, entityType = 'com
                         No parameters available for this component.
                     </div>
                 ) : (
-                    <div className="space-y-2">
+                    <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
                         {parameters.map((param) => (
                             <ParameterRow
                                 key={param.name}

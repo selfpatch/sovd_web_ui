@@ -16,6 +16,7 @@ import type {
     Parameter,
     // New SOVD-compliant types
     Execution,
+    ExecutionStatus,
     CreateExecutionRequest,
     CreateExecutionResponse,
     ListExecutionsResponse,
@@ -1022,6 +1023,54 @@ export class SovdApiClient {
     }
 
     /**
+     * Normalize execution status from API response.
+     * Maps SOVD-compliant status values to frontend ExecutionStatus.
+     * Uses x-medkit.ros2_status when available for actual ROS 2 outcome.
+     */
+    private normalizeExecutionStatus(apiResponse: {
+        status?: string;
+        'x-medkit'?: {
+            ros2_status?: string;
+        };
+    }): ExecutionStatus {
+        const apiStatus = apiResponse.status?.toLowerCase() || 'pending';
+        const ros2Status = apiResponse['x-medkit']?.ros2_status?.toLowerCase();
+
+        // SOVD-compliant: use 'completed' directly for terminal success state
+        if (apiStatus === 'completed') {
+            // Check ros2_status for more specific outcome if available
+            if (ros2Status === 'failed' || ros2Status === 'failure' || ros2Status === 'aborted') {
+                return 'failed';
+            }
+            if (ros2Status === 'canceled' || ros2Status === 'cancelled') {
+                return 'canceled';
+            }
+            // Return 'completed' (SOVD standard) - includes succeeded, success, etc.
+            return 'completed';
+        }
+
+        // Map other API statuses
+        if (apiStatus === 'running' || apiStatus === 'executing' || apiStatus === 'in_progress') {
+            return 'running';
+        }
+        if (apiStatus === 'pending' || apiStatus === 'created' || apiStatus === 'queued') {
+            return 'pending';
+        }
+        if (apiStatus === 'canceled' || apiStatus === 'cancelled') {
+            return 'canceled';
+        }
+        if (apiStatus === 'failed' || apiStatus === 'failure' || apiStatus === 'error') {
+            return 'failed';
+        }
+        if (apiStatus === 'succeeded' || apiStatus === 'success' || apiStatus === 'finished') {
+            return 'succeeded';
+        }
+
+        // Fallback to running for unknown statuses
+        return 'running';
+    }
+
+    /**
      * Get execution status by ID
      * @param entityId Entity ID
      * @param operationName Operation name
@@ -1049,7 +1098,30 @@ export class SovdApiClient {
             throw new Error(errorData.message || `HTTP ${response.status}`);
         }
 
-        return await response.json();
+        const rawData = await response.json();
+
+        // Normalize status from API response
+        const normalizedStatus = this.normalizeExecutionStatus(rawData);
+
+        // Extract result from x-medkit if present
+        const xMedkit = rawData['x-medkit'] as
+            | {
+                  result?: unknown;
+                  feedback?: unknown;
+                  error?: string;
+              }
+            | undefined;
+
+        return {
+            id: rawData.id || executionId,
+            status: normalizedStatus,
+            created_at: rawData.created_at || new Date().toISOString(),
+            started_at: rawData.started_at,
+            finished_at: rawData.finished_at,
+            result: rawData.result ?? xMedkit?.result,
+            error: rawData.error ?? xMedkit?.error,
+            last_feedback: rawData.last_feedback ?? xMedkit?.feedback,
+        };
     }
 
     /**
@@ -1080,7 +1152,18 @@ export class SovdApiClient {
             throw new Error(errorData.message || `HTTP ${response.status}`);
         }
 
-        return await response.json();
+        const rawData = await response.json();
+
+        // Normalize status from API response
+        const normalizedStatus = this.normalizeExecutionStatus(rawData);
+
+        return {
+            id: rawData.id || executionId,
+            status: normalizedStatus,
+            created_at: rawData.created_at || new Date().toISOString(),
+            result: rawData.result,
+            error: rawData.error,
+        };
     }
 
     // ===========================================================================

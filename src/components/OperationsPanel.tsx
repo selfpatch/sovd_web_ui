@@ -107,10 +107,8 @@ function isEmptySchema(schema: TopicSchema | null): boolean {
  */
 function OperationRow({
     operation,
-    entityId,
     onInvoke,
     defaultExpanded = false,
-    entityType = 'components',
 }: {
     operation: Operation;
     entityId: string;
@@ -190,12 +188,15 @@ function OperationRow({
             const response = await onInvoke(operation.name, request);
 
             if (response) {
+                // Determine if this is an action based on operation kind (not response)
+                const isAction = operation.kind === 'action';
                 // Add to history (newest first, max 10 entries)
                 const entry: OperationHistoryEntry = {
                     id: crypto.randomUUID(),
                     timestamp: new Date(),
                     response,
-                    executionId: response.kind === 'action' && !response.error ? response.id : undefined,
+                    // For actions, always track executionId for status display
+                    executionId: isAction && response.id ? response.id : undefined,
                 };
                 setHistory((prev) => [entry, ...prev.slice(0, 9)]);
             }
@@ -356,16 +357,6 @@ function OperationRow({
                             </div>
                         )}
 
-                        {/* Action status monitoring for latest action */}
-                        {latestExecutionId && operation.kind === 'action' && (
-                            <ActionStatusPanel
-                                entityId={entityId}
-                                operationName={operation.name}
-                                executionId={latestExecutionId}
-                                entityType={entityType}
-                            />
-                        )}
-
                         {/* History section */}
                         {history.length > 0 && (
                             <div className="space-y-2">
@@ -412,7 +403,10 @@ function OperationRow({
                                                 <div className="text-[10px] text-muted-foreground mb-1">
                                                     {entry.timestamp.toLocaleTimeString()}
                                                 </div>
-                                                <OperationResponseDisplay response={entry.response} />
+                                                <OperationResponseDisplay
+                                                    response={entry.response}
+                                                    executionId={entry.executionId}
+                                                />
                                             </div>
                                         ))}
                                     </div>
@@ -420,12 +414,22 @@ function OperationRow({
 
                                 {/* Show only latest response when history is collapsed */}
                                 {!showHistory && latestEntry && (
-                                    <OperationResponseDisplay response={latestEntry.response} />
+                                    <OperationResponseDisplay
+                                        response={latestEntry.response}
+                                        executionId={latestEntry.executionId}
+                                    />
                                 )}
                             </div>
                         )}
                     </div>
                 </CollapsibleContent>
+
+                {/* Action status monitoring - OUTSIDE CollapsibleContent to keep polling active when collapsed */}
+                {latestExecutionId && operation.kind === 'action' && (
+                    <div className="px-3 pb-3">
+                        <ActionStatusPanel executionId={latestExecutionId} />
+                    </div>
+                )}
             </div>
         </Collapsible>
     );
@@ -496,11 +500,11 @@ export function OperationsPanel({ entityId, highlightOperation, entityType = 'co
                         <p className="text-xs mt-1">This entity has no services or actions</p>
                     </div>
                 ) : (
-                    <div className="space-y-4">
+                    <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
                         {/* Services section */}
                         {services.length > 0 && (
                             <div className="space-y-2">
-                                <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                                <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2 sticky top-0 bg-card py-1 z-10">
                                     <Zap className="w-4 h-4" />
                                     Services
                                 </h4>
@@ -522,7 +526,7 @@ export function OperationsPanel({ entityId, highlightOperation, entityType = 'co
                         {/* Actions section */}
                         {actions.length > 0 && (
                             <div className="space-y-2">
-                                <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                                <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2 sticky top-0 bg-card py-1 z-10">
                                     <Clock className="w-4 h-4" />
                                     Actions
                                 </h4>

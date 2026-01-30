@@ -169,7 +169,7 @@ function DataTabContent({
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <div className="grid gap-3 md:grid-cols-2">
+                    <div className="grid gap-3 md:grid-cols-2 max-h-[500px] overflow-y-auto pr-1">
                         {topics.map((topic) => {
                             const cleanName = topic.topic.startsWith('/') ? topic.topic.slice(1) : topic.topic;
                             const encodedName = encodeURIComponent(cleanName);
@@ -213,7 +213,7 @@ function DataTabContent({
                             </div>
                         </CardHeader>
                         <CardContent>
-                            <div className="space-y-1">
+                            <div className="space-y-1 max-h-[300px] overflow-y-auto pr-1">
                                 {topicsInfo.publishes.map((topic: string) => {
                                     const cleanName = topic.startsWith('/') ? topic.slice(1) : topic;
                                     const encodedName = encodeURIComponent(cleanName);
@@ -247,7 +247,7 @@ function DataTabContent({
                             </div>
                         </CardHeader>
                         <CardContent>
-                            <div className="space-y-1">
+                            <div className="space-y-1 max-h-[300px] overflow-y-auto pr-1">
                                 {topicsInfo.subscribes.map((topic: string) => {
                                     const cleanName = topic.startsWith('/') ? topic.slice(1) : topic;
                                     const encodedName = encodeURIComponent(cleanName);
