@@ -2,6 +2,9 @@
 
 [![CI](https://github.com/selfpatch/sovd_web_ui/actions/workflows/ci.yml/badge.svg)](https://github.com/selfpatch/sovd_web_ui/actions/workflows/ci.yml)
 [![GHCR](https://img.shields.io/badge/GHCR-ghcr.io%2Fselfpatch%2Fsovd__web__ui-blue?logo=github)](https://github.com/selfpatch/sovd_web_ui/pkgs/container/sovd_web_ui)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://selfpatch.github.io/ros2_medkit/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Discord](https://img.shields.io/badge/Discord-Join%20Us-7289DA?logo=discord&logoColor=white)](https://discord.gg/fEbWKTah)
 
 Simple, open-source web UI for browsing SOVD (Service-Oriented Vehicle Diagnostics) entity trees via discovery endpoints.
 
