@@ -1738,24 +1738,42 @@ export class SovdApiClient {
      * @param onError Callback for errors
      * @returns Cleanup function to close the connection
      */
-    subscribeFaultStream(onFault: (fault: Fault) => void, onError?: (error: Error) => void): () => void {
+    subscribeFaultStream(
+        onFaultConfirmed: (fault: Fault) => void,
+        onFaultCleared: (fault: Fault) => void,
+        onError?: (error: Error) => void
+    ): () => void {
         const eventSource = new EventSource(this.getUrl('faults/stream'));
 
-        eventSource.onmessage = (event) => {
+        const parseFault = (event: MessageEvent): Fault | null => {
             try {
-                // API may return raw fault format that needs transformation
+                // API returns: { event_type, fault, timestamp }
                 const rawData = JSON.parse(event.data);
-                // Check if this is the raw API format (has fault_code) or already transformed
-                if ('fault_code' in rawData) {
-                    const fault = this.transformFault(rawData);
-                    onFault(fault);
-                } else {
-                    // Already in Fault format
-                    onFault(rawData as Fault);
+                const faultData = rawData.fault || rawData;
+                if ('fault_code' in faultData) {
+                    return this.transformFault(faultData);
                 }
+                return faultData as Fault;
             } catch {
                 onError?.(new Error('Failed to parse fault event'));
+                return null;
             }
+        };
+
+        eventSource.addEventListener('fault_confirmed', (event: MessageEvent) => {
+            const fault = parseFault(event);
+            if (fault) onFaultConfirmed(fault);
+        });
+
+        eventSource.addEventListener('fault_cleared', (event: MessageEvent) => {
+            const fault = parseFault(event);
+            if (fault) onFaultCleared(fault);
+        });
+
+        // Fallback for unnamed events - treat as confirmed
+        eventSource.onmessage = (event: MessageEvent) => {
+            const fault = parseFault(event);
+            if (fault) onFaultConfirmed(fault);
         };
 
         eventSource.onerror = () => {
