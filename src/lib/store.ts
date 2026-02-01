@@ -557,6 +557,10 @@ export const useAppStore = create<AppState>()(
 
                     // Load root entities after successful connection
                     await get().loadRootEntities();
+
+                    // Subscribe to fault stream for real-time toast notifications
+                    get().subscribeFaultStream();
+
                     return true;
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Connection failed';
@@ -572,6 +576,9 @@ export const useAppStore = create<AppState>()(
             disconnect: () => {
                 // Stop execution polling
                 get().stopExecutionPolling();
+
+                // Unsubscribe from fault stream
+                get().unsubscribeFaultStream();
 
                 set({
                     serverUrl: null,
@@ -1392,6 +1399,7 @@ export const useAppStore = create<AppState>()(
                 }
 
                 const cleanup = client.subscribeFaultStream(
+                    // onFaultConfirmed
                     (fault) => {
                         const { faults } = get();
                         // Add or update fault in the list
@@ -1407,6 +1415,15 @@ export const useAppStore = create<AppState>()(
                         }
                         toast.warning(`Fault: ${fault.message}`, { autoClose: 5000 });
                     },
+                    // onFaultCleared - no toast here, clearFault() already shows one for UI-triggered clears
+                    (fault) => {
+                        const { faults } = get();
+                        const newFaults = faults.filter(
+                            (f) => !(f.code === fault.code && f.entity_id === fault.entity_id)
+                        );
+                        set({ faults: newFaults });
+                    },
+                    // onError
                     (error) => {
                         toast.error(`Fault stream error: ${error.message}`);
                     }
