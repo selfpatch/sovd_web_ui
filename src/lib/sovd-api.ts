@@ -1574,15 +1574,7 @@ export class SovdApiClient {
             message: apiFault.description,
             severity,
             status,
-            // TODO: Remove this workaround after fixing ros2_medkit fault_manager
-            // to use wall clock time instead of sim time for fault timestamps.
-            // See: ros2_medkit/docs/issues/fault-timestamp-sim-time-bug.md
-            // Handle simulation time (small values) vs real Unix timestamps
-            // If timestamp < year 2000, it's likely sim time - use current time instead
-            timestamp:
-                apiFault.first_occurred < 946684800
-                    ? new Date().toISOString()
-                    : new Date(apiFault.first_occurred * 1000).toISOString(),
+            timestamp: new Date(apiFault.first_occurred * 1000).toISOString(),
             entity_id,
             entity_type,
             parameters: {
