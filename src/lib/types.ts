@@ -615,8 +615,8 @@ export type Snapshot = FreezeFrameSnapshot | RosbagSnapshot;
  * Extended data records with timestamps
  */
 export interface ExtendedDataRecords {
-    first_occurence: string;
-    last_occurence: string;
+    first_occurrence: string;
+    last_occurrence: string;
 }
 
 /**

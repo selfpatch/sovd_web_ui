@@ -24,8 +24,8 @@ describe('SovdApiClient', () => {
                 },
                 environment_data: {
                     extended_data_records: {
-                        first_occurence: '2026-02-04T10:00:00Z',
-                        last_occurence: '2026-02-04T10:05:00Z',
+                        first_occurrence: '2026-02-04T10:00:00Z',
+                        last_occurrence: '2026-02-04T10:05:00Z',
                     },
                     snapshots: [],
                 },

@@ -196,22 +196,22 @@ function FaultRow({
                                             Extended Data Records
                                         </h5>
                                         <dl className="grid grid-cols-2 gap-2 text-sm">
-                                            {environmentData.extended_data_records.first_occurence && (
+                                            {environmentData.extended_data_records.first_occurrence && (
                                                 <>
                                                     <dt className="text-muted-foreground">First Occurrence</dt>
                                                     <dd className="font-mono text-xs">
                                                         {new Date(
-                                                            environmentData.extended_data_records.first_occurence
+                                                            environmentData.extended_data_records.first_occurrence
                                                         ).toLocaleString()}
                                                     </dd>
                                                 </>
                                             )}
-                                            {environmentData.extended_data_records.last_occurence && (
+                                            {environmentData.extended_data_records.last_occurrence && (
                                                 <>
                                                     <dt className="text-muted-foreground">Last Occurrence</dt>
                                                     <dd className="font-mono text-xs">
                                                         {new Date(
-                                                            environmentData.extended_data_records.last_occurence
+                                                            environmentData.extended_data_records.last_occurrence
                                                         ).toLocaleString()}
                                                     </dd>
                                                 </>
