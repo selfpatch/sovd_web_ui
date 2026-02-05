@@ -4,6 +4,7 @@ import { ToastContainer, toast } from 'react-toastify';
 import { Menu, X } from 'lucide-react';
 import 'react-toastify/dist/ReactToastify.css';
 import { Button } from '@/components/ui/button';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { EntityTreeSidebar } from '@/components/EntityTreeSidebar';
 import { EntityDetailPanel } from '@/components/EntityDetailPanel';
 import { ServerConnectionDialog } from '@/components/ServerConnectionDialog';
@@ -82,73 +83,75 @@ function App() {
                 toast.error(`Application error: ${error.message}`);
             }}
         >
-            <div className="flex h-screen bg-background relative">
-                {/* Mobile menu toggle */}
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="fixed top-3 left-3 z-50 md:hidden"
-                    onClick={() => setSidebarOpen(!sidebarOpen)}
-                    aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
-                >
-                    {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-                </Button>
+            <TooltipProvider>
+                <div className="flex h-screen bg-background relative">
+                    {/* Mobile menu toggle */}
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="fixed top-3 left-3 z-50 md:hidden"
+                        onClick={() => setSidebarOpen(!sidebarOpen)}
+                        aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
+                    >
+                        {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+                    </Button>
 
-                {/* Sidebar with responsive behavior */}
-                <div
-                    className={`
+                    {/* Sidebar with responsive behavior */}
+                    <div
+                        className={`
                         fixed inset-y-0 left-0 z-40 w-80 transform transition-transform duration-200 ease-in-out
                         md:relative md:translate-x-0
                         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
                     `}
-                >
-                    <EntityTreeSidebar
-                        onSettingsClick={() => setShowConnectionDialog(true)}
-                        onFaultsDashboardClick={handleFaultsDashboardClick}
-                    />
-                </div>
-
-                {/* Overlay for mobile when sidebar is open */}
-                {sidebarOpen && (
-                    <button
-                        type="button"
-                        className="fixed inset-0 z-30 bg-black/50 md:hidden cursor-default"
-                        onClick={() => setSidebarOpen(false)}
-                        onKeyDown={(event) => {
-                            if (event.key === 'Escape') {
-                                setSidebarOpen(false);
-                            }
-                        }}
-                        aria-label="Close sidebar"
-                    />
-                )}
-
-                {/* Main content */}
-                <div className="flex-1 md:ml-0">
-                    <ErrorBoundary>
-                        <EntityDetailPanel
-                            onConnectClick={() => setShowConnectionDialog(true)}
-                            viewMode={viewMode}
-                            onEntitySelect={handleEntitySelect}
+                    >
+                        <EntityTreeSidebar
+                            onSettingsClick={() => setShowConnectionDialog(true)}
+                            onFaultsDashboardClick={handleFaultsDashboardClick}
                         />
-                    </ErrorBoundary>
-                </div>
+                    </div>
 
-                <ServerConnectionDialog open={showConnectionDialog} onOpenChange={setShowConnectionDialog} />
-                <SearchCommand open={showSearch} onOpenChange={setShowSearch} />
-                <ToastContainer
-                    position="bottom-right"
-                    autoClose={5000}
-                    hideProgressBar={false}
-                    newestOnTop
-                    closeOnClick
-                    rtl={false}
-                    pauseOnFocusLoss
-                    draggable
-                    pauseOnHover
-                    theme="dark"
-                />
-            </div>
+                    {/* Overlay for mobile when sidebar is open */}
+                    {sidebarOpen && (
+                        <button
+                            type="button"
+                            className="fixed inset-0 z-30 bg-black/50 md:hidden cursor-default"
+                            onClick={() => setSidebarOpen(false)}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Escape') {
+                                    setSidebarOpen(false);
+                                }
+                            }}
+                            aria-label="Close sidebar"
+                        />
+                    )}
+
+                    {/* Main content */}
+                    <div className="flex-1 md:ml-0">
+                        <ErrorBoundary>
+                            <EntityDetailPanel
+                                onConnectClick={() => setShowConnectionDialog(true)}
+                                viewMode={viewMode}
+                                onEntitySelect={handleEntitySelect}
+                            />
+                        </ErrorBoundary>
+                    </div>
+
+                    <ServerConnectionDialog open={showConnectionDialog} onOpenChange={setShowConnectionDialog} />
+                    <SearchCommand open={showSearch} onOpenChange={setShowSearch} />
+                    <ToastContainer
+                        position="bottom-right"
+                        autoClose={5000}
+                        hideProgressBar={false}
+                        newestOnTop
+                        closeOnClick
+                        rtl={false}
+                        pauseOnFocusLoss
+                        draggable
+                        pauseOnHover
+                        theme="dark"
+                    />
+                </div>
+            </TooltipProvider>
         </ErrorBoundary>
     );
 }
