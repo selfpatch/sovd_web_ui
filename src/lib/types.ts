@@ -554,12 +554,141 @@ export interface FunctionCapabilities {
 export type FaultSeverity = 'info' | 'warning' | 'error' | 'critical';
 
 /**
- * Fault status values
+ * Fault status values (legacy)
  */
-export type FaultStatus = 'active' | 'pending' | 'cleared';
+export type FaultStatusValue = 'active' | 'pending' | 'cleared';
 
 /**
- * Fault entity representing a diagnostic trouble code
+ * Alias for backwards compatibility
+ * @deprecated Use FaultStatusValue for clarity
+ */
+export type FaultStatus = FaultStatusValue;
+
+// ==================== SOVD Snapshot Types ====================
+
+/**
+ * Base snapshot type - freeze frame or rosbag
+ */
+export interface SnapshotBase {
+    type: 'freeze_frame' | 'rosbag';
+    name: string;
+}
+
+/**
+ * Freeze frame snapshot - captured topic data
+ */
+export interface FreezeFrameSnapshot extends SnapshotBase {
+    type: 'freeze_frame';
+    data: unknown;
+    'x-medkit'?: {
+        topic: string;
+        message_type: string;
+        full_data: unknown;
+        captured_at: string;
+        parse_error?: string;
+    };
+}
+
+/**
+ * Rosbag snapshot - recording file metadata
+ */
+export interface RosbagSnapshot extends SnapshotBase {
+    type: 'rosbag';
+    bulk_data_uri: string;
+    size_bytes: number;
+    duration_sec: number;
+    format: 'mcap' | 'sqlite3' | 'db3';
+    'x-medkit'?: {
+        captured_at: string;
+        fault_code: string;
+    };
+}
+
+/**
+ * Snapshot union type - discriminated by 'type' field
+ */
+export type Snapshot = FreezeFrameSnapshot | RosbagSnapshot;
+
+// ==================== SOVD Environment Data ====================
+
+/**
+ * Extended data records with timestamps
+ */
+export interface ExtendedDataRecords {
+    first_occurence: string;
+    last_occurence: string;
+}
+
+/**
+ * Environment data containing snapshots and record timestamps
+ */
+export interface EnvironmentData {
+    extended_data_records: ExtendedDataRecords;
+    snapshots: Snapshot[];
+}
+
+// ==================== SOVD Fault Status Object ====================
+
+/**
+ * SOVD-compliant fault status object
+ */
+export interface SovdFaultStatus {
+    aggregatedStatus: 'active' | 'passive' | 'cleared';
+    testFailed: '0' | '1';
+    confirmedDTC: '0' | '1';
+    pendingDTC: '0' | '1';
+}
+
+// ==================== SOVD Fault Item & Response ====================
+
+/**
+ * Fault item in SOVD response
+ */
+export interface FaultItem {
+    code: string;
+    fault_name: string;
+    severity: number;
+    status: SovdFaultStatus;
+}
+
+/**
+ * Extension fields for fault response
+ */
+export interface FaultExtensions {
+    occurrence_count: number;
+    reporting_sources: string[];
+    severity_label: string;
+}
+
+/**
+ * SOVD-compliant fault response with environment data
+ */
+export interface FaultResponse {
+    item: FaultItem;
+    environment_data: EnvironmentData;
+    'x-medkit'?: FaultExtensions;
+}
+
+// ==================== Snapshot Type Guards ====================
+
+/**
+ * Type guard for freeze_frame snapshot
+ */
+export function isFreezeFrameSnapshot(snapshot: Snapshot): snapshot is FreezeFrameSnapshot {
+    return snapshot.type === 'freeze_frame';
+}
+
+/**
+ * Type guard for rosbag snapshot
+ */
+export function isRosbagSnapshot(snapshot: Snapshot): snapshot is RosbagSnapshot {
+    return snapshot.type === 'rosbag';
+}
+
+// ==================== Legacy Fault Types ====================
+
+/**
+ * Legacy fault entity (for backwards compatibility)
  */
 export interface Fault {
     /** Unique fault code identifier */
@@ -569,7 +698,7 @@ export interface Fault {
     /** Fault severity level */
     severity: FaultSeverity;
     /** Current fault status */
-    status: FaultStatus;
+    status: FaultStatusValue;
     /** ISO 8601 timestamp when fault was detected */
     timestamp: string;
     /** Entity ID where fault originated */
@@ -593,7 +722,8 @@ export interface ListFaultsResponse {
 }
 
 /**
- * Fault snapshot for debugging
+ * Legacy fault snapshot (deprecated - use Snapshot instead)
+ * @deprecated Use FreezeFrameSnapshot or RosbagSnapshot instead
  */
 export interface FaultSnapshot {
     /** Snapshot identifier */
@@ -605,13 +735,54 @@ export interface FaultSnapshot {
 }
 
 /**
- * Response from GET /{entity}/faults/{code}/snapshots
+ * Legacy response from GET /{entity}/faults/{code}/snapshots
+ * @deprecated Use environment_data.snapshots from FaultResponse instead
  */
 export interface ListSnapshotsResponse {
     /** Array of snapshots */
     items: FaultSnapshot[];
     /** Total count of snapshots */
     count: number;
+}
+
+// =============================================================================
+// BULK DATA (SOVD Binary Data Downloads)
+// =============================================================================
+
+/**
+ * Bulk data category listing
+ */
+export interface BulkDataCategory {
+    items: string[];
+}
+
+/**
+ * Bulk data descriptor for a single item
+ */
+export interface BulkDataDescriptor {
+    /** UUID identifier */
+    id: string;
+    /** Display name */
+    name: string;
+    /** MIME type (e.g., 'application/x-mcap') */
+    mimetype: string;
+    /** File size in bytes */
+    size: number;
+    /** ISO 8601 creation timestamp */
+    creation_date: string;
+    /** Extension fields */
+    'x-medkit'?: {
+        fault_code: string;
+        duration_sec: number;
+        format: string;
+    };
+}
+
+/**
+ * Response from GET /{entity}/bulk-data/{category}
+ */
+export interface BulkDataList {
+    items: BulkDataDescriptor[];
 }
 
 // =============================================================================
