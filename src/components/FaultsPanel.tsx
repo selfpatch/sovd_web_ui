@@ -1,11 +1,24 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useShallow } from 'zustand/shallow';
-import { AlertTriangle, Loader2, RefreshCw, Trash2, AlertCircle, AlertOctagon, Info, CheckCircle } from 'lucide-react';
+import {
+    AlertTriangle,
+    Loader2,
+    RefreshCw,
+    Trash2,
+    AlertCircle,
+    AlertOctagon,
+    Info,
+    CheckCircle,
+    ChevronDown,
+    ChevronRight,
+} from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { SnapshotCard } from './SnapshotCard';
 import { useAppStore, type AppState } from '@/lib/store';
-import type { Fault, FaultSeverity, FaultStatus } from '@/lib/types';
+import type { Fault, FaultSeverity, FaultStatus, FaultResponse } from '@/lib/types';
 import type { SovdResourceEntityType } from '@/lib/sovd-api';
 
 interface FaultsPanelProps {
@@ -77,67 +90,169 @@ function formatTimestamp(timestamp: string): string {
 }
 
 /**
- * Single fault row component
+ * Single fault row component with collapsible environment data
  */
 function FaultRow({
     fault,
     onClear,
     isClearing,
+    isExpanded,
+    onToggle,
+    environmentData,
+    isLoadingDetails,
 }: {
     fault: Fault;
     onClear: (code: string) => void;
     isClearing: boolean;
+    isExpanded: boolean;
+    onToggle: () => void;
+    environmentData?: FaultResponse['environment_data'];
+    isLoadingDetails: boolean;
 }) {
     const canClear = fault.status === 'active' || fault.status === 'pending';
 
     return (
-        <div className="flex items-start gap-3 p-3 rounded-lg border bg-card">
-            {/* Severity Icon */}
-            <div
-                className={`shrink-0 mt-0.5 ${
-                    fault.severity === 'critical' || fault.severity === 'error'
-                        ? 'text-destructive'
-                        : fault.severity === 'warning'
-                          ? 'text-yellow-500'
-                          : 'text-muted-foreground'
-                }`}
-            >
-                {getSeverityIcon(fault.severity)}
-            </div>
+        <Collapsible open={isExpanded} onOpenChange={onToggle}>
+            <div className="rounded-lg border bg-card">
+                <CollapsibleTrigger asChild>
+                    <div className="flex items-start gap-3 p-3 cursor-pointer hover:bg-muted/50 transition-colors">
+                        {/* Expand/Collapse Icon */}
+                        <div className="shrink-0 mt-0.5">
+                            {isExpanded ? (
+                                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                            ) : (
+                                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                            )}
+                        </div>
 
-            {/* Fault details */}
-            <div className="min-w-0 flex-1 space-y-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-sm font-medium">{fault.code}</span>
-                    <Badge variant={getSeverityBadgeVariant(fault.severity)} className="text-xs">
-                        {fault.severity}
-                    </Badge>
-                    <Badge variant={getStatusBadgeVariant(fault.status)} className="text-xs">
-                        {fault.status}
-                    </Badge>
-                </div>
-                <p className="text-sm text-foreground">{fault.message}</p>
-                <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <span>{formatTimestamp(fault.timestamp)}</span>
-                    <span className="font-mono">
-                        {fault.entity_type}: {fault.entity_id}
-                    </span>
-                </div>
-            </div>
+                        {/* Severity Icon */}
+                        <div
+                            className={`shrink-0 mt-0.5 ${
+                                fault.severity === 'critical' || fault.severity === 'error'
+                                    ? 'text-destructive'
+                                    : fault.severity === 'warning'
+                                      ? 'text-yellow-500'
+                                      : 'text-muted-foreground'
+                            }`}
+                        >
+                            {getSeverityIcon(fault.severity)}
+                        </div>
 
-            {/* Clear button */}
-            {canClear && (
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onClear(fault.code)}
-                    disabled={isClearing}
-                    className="shrink-0"
-                >
-                    {isClearing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                </Button>
-            )}
-        </div>
+                        {/* Fault details */}
+                        <div className="min-w-0 flex-1 space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono text-sm font-medium">{fault.code}</span>
+                                <Badge variant={getSeverityBadgeVariant(fault.severity)} className="text-xs">
+                                    {fault.severity}
+                                </Badge>
+                                <Badge variant={getStatusBadgeVariant(fault.status)} className="text-xs">
+                                    {fault.status}
+                                </Badge>
+                            </div>
+                            <p className="text-sm text-foreground">{fault.message}</p>
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                <span>{formatTimestamp(fault.timestamp)}</span>
+                                <span className="font-mono">
+                                    {fault.entity_type}: {fault.entity_id}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Clear button */}
+                        {canClear && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onClear(fault.code);
+                                }}
+                                disabled={isClearing}
+                                className="shrink-0"
+                            >
+                                {isClearing ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                    <Trash2 className="w-4 h-4" />
+                                )}
+                            </Button>
+                        )}
+                    </div>
+                </CollapsibleTrigger>
+
+                <CollapsibleContent>
+                    <div className="px-3 pb-3 pt-0 border-t">
+                        {isLoadingDetails ? (
+                            <div className="flex items-center justify-center py-4">
+                                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                                <span className="ml-2 text-sm text-muted-foreground">Loading environment data...</span>
+                            </div>
+                        ) : environmentData ? (
+                            <div className="pt-3 space-y-4">
+                                {/* Extended Data Records */}
+                                {environmentData.extended_data_records && (
+                                    <div>
+                                        <h5 className="text-sm font-medium text-muted-foreground mb-2">
+                                            Extended Data Records
+                                        </h5>
+                                        <dl className="grid grid-cols-2 gap-2 text-sm">
+                                            {environmentData.extended_data_records.first_occurence && (
+                                                <>
+                                                    <dt className="text-muted-foreground">First Occurrence</dt>
+                                                    <dd className="font-mono text-xs">
+                                                        {new Date(
+                                                            environmentData.extended_data_records.first_occurence
+                                                        ).toLocaleString()}
+                                                    </dd>
+                                                </>
+                                            )}
+                                            {environmentData.extended_data_records.last_occurence && (
+                                                <>
+                                                    <dt className="text-muted-foreground">Last Occurrence</dt>
+                                                    <dd className="font-mono text-xs">
+                                                        {new Date(
+                                                            environmentData.extended_data_records.last_occurence
+                                                        ).toLocaleString()}
+                                                    </dd>
+                                                </>
+                                            )}
+                                        </dl>
+                                    </div>
+                                )}
+
+                                {/* Snapshots */}
+                                {environmentData.snapshots && environmentData.snapshots.length > 0 && (
+                                    <div>
+                                        <h5 className="text-sm font-medium text-muted-foreground mb-2">
+                                            Snapshots ({environmentData.snapshots.length})
+                                        </h5>
+                                        <div className="space-y-2">
+                                            {environmentData.snapshots.map((snapshot, idx) => (
+                                                <SnapshotCard
+                                                    key={snapshot.name || idx}
+                                                    snapshot={snapshot}
+                                                    index={idx}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* No environment data message */}
+                                {!environmentData.extended_data_records &&
+                                    (!environmentData.snapshots || environmentData.snapshots.length === 0) && (
+                                        <p className="text-sm text-muted-foreground italic py-2">
+                                            No environment data available
+                                        </p>
+                                    )}
+                            </div>
+                        ) : (
+                            <p className="text-sm text-muted-foreground italic py-3">No environment data available</p>
+                        )}
+                    </div>
+                </CollapsibleContent>
+            </div>
+        </Collapsible>
     );
 }
 
@@ -149,6 +264,9 @@ export function FaultsPanel({ entityId, entityType = 'components' }: FaultsPanel
     const [isLoading, setIsLoading] = useState(true);
     const [clearingCodes, setClearingCodes] = useState<Set<string>>(new Set());
     const [error, setError] = useState<string | null>(null);
+    const [expandedFaults, setExpandedFaults] = useState<Set<string>>(new Set());
+    const [faultDetails, setFaultDetails] = useState<Map<string, FaultResponse>>(new Map());
+    const [loadingDetails, setLoadingDetails] = useState<Set<string>>(new Set());
 
     const { client } = useAppStore(
         useShallow((state: AppState) => ({
@@ -176,6 +294,38 @@ export function FaultsPanel({ entityId, entityType = 'components' }: FaultsPanel
     useEffect(() => {
         loadFaults();
     }, [loadFaults]);
+
+    const handleToggleFault = useCallback(
+        async (faultCode: string) => {
+            const newExpanded = new Set(expandedFaults);
+
+            if (newExpanded.has(faultCode)) {
+                newExpanded.delete(faultCode);
+            } else {
+                newExpanded.add(faultCode);
+
+                // Fetch details if not cached
+                if (!faultDetails.has(faultCode) && client) {
+                    setLoadingDetails((prev) => new Set([...prev, faultCode]));
+                    try {
+                        const details = await client.getFaultWithEnvironmentData(entityType, entityId, faultCode);
+                        setFaultDetails((prev) => new Map(prev).set(faultCode, details));
+                    } catch (err) {
+                        console.error('Failed to fetch fault details:', err);
+                    } finally {
+                        setLoadingDetails((prev) => {
+                            const next = new Set(prev);
+                            next.delete(faultCode);
+                            return next;
+                        });
+                    }
+                }
+            }
+
+            setExpandedFaults(newExpanded);
+        },
+        [client, entityType, entityId, expandedFaults, faultDetails]
+    );
 
     const handleClear = useCallback(
         async (code: string) => {
@@ -258,6 +408,10 @@ export function FaultsPanel({ entityId, entityType = 'components' }: FaultsPanel
                                 fault={fault}
                                 onClear={handleClear}
                                 isClearing={clearingCodes.has(fault.code)}
+                                isExpanded={expandedFaults.has(fault.code)}
+                                onToggle={() => handleToggleFault(fault.code)}
+                                environmentData={faultDetails.get(fault.code)?.environment_data}
+                                isLoadingDetails={loadingDetails.has(fault.code)}
                             />
                         ))}
                     </div>
