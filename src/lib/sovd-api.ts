@@ -33,6 +33,10 @@ import type {
     VersionInfo,
     SovdError,
     SovdResourceEntityType,
+    // SOVD Bulk Data and Environment Data types
+    FaultResponse,
+    BulkDataCategory,
+    BulkDataList,
 } from './types';
 import { convertJsonSchemaToTopicSchema } from './schema-utils';
 
@@ -1677,6 +1681,7 @@ export class SovdApiClient {
 
     /**
      * Get fault snapshots
+     * @deprecated Use getFaultWithEnvironmentData() instead - snapshots are now inline in fault response
      * @param faultCode Fault code
      */
     async getFaultSnapshots(faultCode: string): Promise<ListSnapshotsResponse> {
@@ -1697,6 +1702,7 @@ export class SovdApiClient {
 
     /**
      * Get fault snapshots for a specific entity
+     * @deprecated Use getFaultWithEnvironmentData() instead - snapshots are now inline in fault response
      * @param entityType Entity type
      * @param entityId Entity identifier
      * @param faultCode Fault code
@@ -1722,6 +1728,144 @@ export class SovdApiClient {
         }
 
         return await response.json();
+    }
+
+    // ===========================================================================
+    // SOVD FAULT WITH ENVIRONMENT DATA (new SOVD-compliant endpoint)
+    // ===========================================================================
+
+    /**
+     * Get fault details with environment data (SOVD-compliant response)
+     * Returns FaultResponse with item, environment_data (snapshots), and x-medkit extensions
+     * @param entityType Entity type (areas, components, apps, functions)
+     * @param entityId Entity identifier
+     * @param faultCode Fault code
+     */
+    async getFaultWithEnvironmentData(
+        entityType: SovdResourceEntityType,
+        entityId: string,
+        faultCode: string
+    ): Promise<FaultResponse> {
+        const response = await fetchWithTimeout(
+            this.getUrl(`${entityType}/${entityId}/faults/${encodeURIComponent(faultCode)}`),
+            {
+                method: 'GET',
+                headers: { Accept: 'application/json' },
+            }
+        );
+
+        if (!response.ok) {
+            const errorData = (await response.json().catch(() => ({}))) as SovdError;
+            throw new Error(errorData.message || `HTTP ${response.status}`);
+        }
+
+        return await response.json();
+    }
+
+    // ===========================================================================
+    // BULK DATA ENDPOINTS (SOVD-compliant binary data downloads)
+    // ===========================================================================
+
+    /**
+     * List bulk-data categories for an entity
+     * @param entityType Entity type (areas, components, apps, functions)
+     * @param entityId Entity identifier
+     * @returns BulkDataCategory with items array (e.g., ['rosbags'])
+     */
+    async listBulkDataCategories(entityType: SovdResourceEntityType, entityId: string): Promise<BulkDataCategory> {
+        const response = await fetchWithTimeout(this.getUrl(`${entityType}/${entityId}/bulk-data`), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                return { items: [] };
+            }
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        return await response.json();
+    }
+
+    /**
+     * List bulk-data items in a category
+     * @param entityType Entity type
+     * @param entityId Entity identifier
+     * @param category Category name (e.g., 'rosbags')
+     * @returns BulkDataList with descriptor items
+     */
+    async listBulkData(entityType: SovdResourceEntityType, entityId: string, category: string): Promise<BulkDataList> {
+        const response = await fetchWithTimeout(
+            this.getUrl(`${entityType}/${entityId}/bulk-data/${encodeURIComponent(category)}`),
+            {
+                method: 'GET',
+                headers: { Accept: 'application/json' },
+            }
+        );
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                return { items: [] };
+            }
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        return await response.json();
+    }
+
+    /**
+     * Get download URL for bulk-data item
+     * Use this URL directly in anchor href or fetch
+     * @param bulkDataUri Absolute URI from fault response (e.g., '/apps/motor/bulk-data/rosbags/uuid')
+     * @returns Full URL for download
+     */
+    getBulkDataUrl(bulkDataUri: string): string {
+        // bulkDataUri is an absolute path, prepend base URL
+        const prefix = this.baseEndpoint ? `${this.baseEndpoint}` : '';
+        return `${this.baseUrl}/${prefix}${bulkDataUri}`;
+    }
+
+    /**
+     * Download bulk-data file as Blob
+     * @param entityType Entity type
+     * @param entityId Entity identifier
+     * @param category Category name (e.g., 'rosbags')
+     * @param id Bulk data item ID (UUID)
+     * @returns Blob and filename from Content-Disposition header
+     */
+    async downloadBulkData(
+        entityType: SovdResourceEntityType,
+        entityId: string,
+        category: string,
+        id: string
+    ): Promise<{ blob: Blob; filename: string }> {
+        const response = await fetchWithTimeout(
+            this.getUrl(`${entityType}/${entityId}/bulk-data/${encodeURIComponent(category)}/${id}`),
+            {
+                method: 'GET',
+            },
+            300000 // 5 minute timeout for large file downloads
+        );
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const blob = await response.blob();
+
+        // Extract filename from Content-Disposition header
+        const disposition = response.headers.get('Content-Disposition');
+        let filename = `${id}.mcap`; // Default
+
+        if (disposition) {
+            const match = disposition.match(/filename="?([^"]+)"?/);
+            if (match && match[1]) {
+                filename = match[1];
+            }
+        }
+
+        return { blob, filename };
     }
 
     /**
@@ -1879,4 +2023,38 @@ export class SovdApiClient {
  */
 export function createSovdClient(serverUrl: string, baseEndpoint: string = ''): SovdApiClient {
     return new SovdApiClient(serverUrl, baseEndpoint);
+}
+
+// ===========================================================================
+// UTILITY FUNCTIONS
+// ===========================================================================
+
+/**
+ * Format bytes as human-readable string
+ * @param bytes Number of bytes
+ * @returns Formatted string (e.g., '1.5 MB')
+ */
+export function formatBytes(bytes: number): string {
+    if (bytes === 0) return '0 B';
+
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+
+/**
+ * Format duration in seconds as human-readable string
+ * @param seconds Duration in seconds
+ * @returns Formatted string (e.g., '1m 30s')
+ */
+export function formatDuration(seconds: number): string {
+    if (seconds < 60) {
+        return `${seconds.toFixed(1)}s`;
+    }
+
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.round(seconds % 60);
+    return `${mins}m ${secs}s`;
 }
