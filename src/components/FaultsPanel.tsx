@@ -308,7 +308,18 @@ export function FaultsPanel({ entityId, entityType = 'components' }: FaultsPanel
                 if (!faultDetails.has(faultCode) && client) {
                     setLoadingDetails((prev) => new Set([...prev, faultCode]));
                     try {
-                        const details = await client.getFaultWithEnvironmentData(entityType, entityId, faultCode);
+                        // Use the fault's own entity info (app-level) for correct bulk_data_uri.
+                        // Components have a synthetic FQN that doesn't match fault reporting sources,
+                        // so fetching via /components/{id}/faults/{code} produces an unusable bulk_data_uri.
+                        const fault = faults.find((f) => f.code === faultCode);
+                        const detailEntityType: SovdResourceEntityType =
+                            fault?.entity_type === 'app' ? 'apps' : entityType;
+                        const detailEntityId = fault?.entity_id || entityId;
+                        const details = await client.getFaultWithEnvironmentData(
+                            detailEntityType,
+                            detailEntityId,
+                            faultCode
+                        );
                         setFaultDetails((prev) => new Map(prev).set(faultCode, details));
                     } catch (err) {
                         console.error('Failed to fetch fault details:', err);
@@ -324,7 +335,7 @@ export function FaultsPanel({ entityId, entityType = 'components' }: FaultsPanel
 
             setExpandedFaults(newExpanded);
         },
-        [client, entityType, entityId, expandedFaults, faultDetails]
+        [client, entityType, entityId, expandedFaults, faultDetails, faults]
     );
 
     const handleClear = useCallback(
