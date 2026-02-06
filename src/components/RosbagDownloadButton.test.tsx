@@ -5,11 +5,13 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import type { RosbagSnapshot } from '@/lib/types';
 
 // Mock the store
+const mockDownloadBulkData = vi.fn();
+
 vi.mock('@/lib/store', () => ({
     useAppStore: vi.fn((selector) =>
         selector({
             client: {
-                getBulkDataUrl: vi.fn((uri: string) => `http://localhost:8080/api/v1${uri}`),
+                downloadBulkData: mockDownloadBulkData,
             },
         })
     ),
@@ -57,7 +59,15 @@ describe('RosbagDownloadButton', () => {
     });
 
     it('triggers download on click', async () => {
-        // Render first, then setup mocks for the actual click
+        // Mock downloadBulkData to return a blob
+        const mockBlob = new Blob(['test data'], { type: 'application/octet-stream' });
+        mockDownloadBulkData.mockResolvedValue({ blob: mockBlob, filename: 'MOTOR_OVERHEAT.mcap' });
+
+        // Mock URL.createObjectURL / revokeObjectURL
+        const mockObjectUrl = 'blob:http://localhost/mock-blob-url';
+        vi.spyOn(URL, 'createObjectURL').mockReturnValue(mockObjectUrl);
+        vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+
         const { getByRole } = renderWithTooltip(<RosbagDownloadButton snapshot={mockSnapshot} />);
         const button = getByRole('button');
 
@@ -79,8 +89,9 @@ describe('RosbagDownloadButton', () => {
         fireEvent.click(button);
 
         await waitFor(() => {
+            expect(mockDownloadBulkData).toHaveBeenCalledWith('apps', 'motor', 'rosbags', 'uuid-123');
             expect(mockClick).toHaveBeenCalled();
-            expect(createdLink.href).toContain('/bulk-data/rosbags/uuid-123');
+            expect(createdLink.href).toContain('blob:');
             expect(createdLink.download).toBe('MOTOR_OVERHEAT.mcap');
         });
     });
