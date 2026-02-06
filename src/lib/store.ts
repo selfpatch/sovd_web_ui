@@ -1357,14 +1357,26 @@ export const useAppStore = create<AppState>()(
             // ===========================================================================
 
             fetchFaults: async () => {
-                const { client } = get();
+                const { client, faults: currentFaults } = get();
                 if (!client) return;
 
-                set({ isLoadingFaults: true });
+                // Only show loading spinner on initial load, not background polls
+                const isInitialLoad = currentFaults.length === 0;
+                if (isInitialLoad) {
+                    set({ isLoadingFaults: true });
+                }
 
                 try {
                     const result = await client.listAllFaults();
-                    set({ faults: result.items, isLoadingFaults: false });
+                    // Skip state update if faults haven't changed to avoid unnecessary re-renders.
+                    // Compare by serializing fault codes + statuses (cheap and covers all meaningful changes).
+                    const newKey = result.items.map((f) => `${f.code}:${f.status}:${f.severity}`).join('|');
+                    const oldKey = currentFaults.map((f) => `${f.code}:${f.status}:${f.severity}`).join('|');
+                    if (newKey !== oldKey) {
+                        set({ faults: result.items, isLoadingFaults: false });
+                    } else if (isInitialLoad) {
+                        set({ isLoadingFaults: false });
+                    }
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
                     toast.error(`Failed to load faults: ${message}`);
@@ -1407,6 +1419,16 @@ export const useAppStore = create<AppState>()(
                             (f) => f.code === fault.code && f.entity_id === fault.entity_id
                         );
                         if (existingIndex >= 0) {
+                            // Skip update if fault data hasn't changed (avoids re-render flicker)
+                            const existing = faults[existingIndex];
+                            if (
+                                existing.status === fault.status &&
+                                existing.severity === fault.severity &&
+                                existing.message === fault.message &&
+                                existing.timestamp === fault.timestamp
+                            ) {
+                                return;
+                            }
                             const newFaults = [...faults];
                             newFaults[existingIndex] = fault;
                             set({ faults: newFaults });
@@ -1421,6 +1443,10 @@ export const useAppStore = create<AppState>()(
                         const newFaults = faults.filter(
                             (f) => !(f.code === fault.code && f.entity_id === fault.entity_id)
                         );
+                        // Skip update if no fault was actually removed
+                        if (newFaults.length === faults.length) {
+                            return;
+                        }
                         set({ faults: newFaults });
                     },
                     // onError
