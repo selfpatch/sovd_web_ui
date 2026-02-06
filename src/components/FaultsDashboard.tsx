@@ -30,31 +30,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { SnapshotCard } from './SnapshotCard';
 import { useAppStore } from '@/lib/store';
 import type { Fault, FaultSeverity, FaultStatus, FaultResponse } from '@/lib/types';
-import type { SovdResourceEntityType } from '@/lib/sovd-api';
+import { mapFaultEntityTypeToResourceType } from '@/lib/sovd-api';
 
 /**
  * Default polling interval in milliseconds
  */
 const DEFAULT_POLL_INTERVAL = 5000;
-
-/**
- * Map fault entity_type (may be singular or plural) to SovdResourceEntityType (always plural)
- */
-function mapFaultEntityTypeToResourceType(entityType: string): SovdResourceEntityType {
-    const type = entityType.toLowerCase();
-    if (type === 'area' || type === 'areas') return 'areas';
-    if (type === 'app' || type === 'apps') return 'apps';
-    if (type === 'function' || type === 'functions') return 'functions';
-    if (type === 'component' || type === 'components') return 'components';
-
-    // Log unexpected entity types to aid debugging
-    console.warn(
-        '[FaultsDashboard] Unexpected fault entity_type received:',
-        entityType,
-        '- defaulting to "components".'
-    );
-    return 'components';
-}
 
 /**
  * Get badge variant for fault severity

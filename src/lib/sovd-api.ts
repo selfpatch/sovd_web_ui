@@ -1821,9 +1821,9 @@ export class SovdApiClient {
      * @returns Full URL for download
      */
     getBulkDataUrl(bulkDataUri: string): string {
-        // bulkDataUri is an absolute path, prepend base URL
-        const prefix = this.baseEndpoint ? `${this.baseEndpoint}` : '';
-        return `${this.baseUrl}/${prefix}${bulkDataUri}`;
+        // bulkDataUri is an absolute path like "/apps/motor/bulk-data/rosbags/FAULT_CODE"
+        // Strip leading slash to make it a relative endpoint for getUrl()
+        return this.getUrl(bulkDataUri.replace(/^\//, ''));
     }
 
     /**
@@ -1859,9 +1859,16 @@ export class SovdApiClient {
         let filename = `${id}.mcap`; // Default
 
         if (disposition) {
-            const match = disposition.match(/filename="?([^"]+)"?/);
-            if (match && match[1]) {
-                filename = match[1];
+            // Try RFC 5987 encoded filename first (filename*=UTF-8''encoded)
+            const utf8Match = disposition.match(/filename\*=(?:UTF-8|utf-8)''(.+?)(?:;|$)/);
+            if (utf8Match && utf8Match[1]) {
+                filename = decodeURIComponent(utf8Match[1]);
+            } else {
+                // Fall back to standard filename="..." or filename=...
+                const match = disposition.match(/filename="?([^";]+)"?/);
+                if (match && match[1]) {
+                    filename = match[1].trim();
+                }
             }
         }
 
@@ -2030,6 +2037,25 @@ export function createSovdClient(serverUrl: string, baseEndpoint: string = ''): 
 // ===========================================================================
 
 /**
+ * Map fault entity_type (may be singular or plural) to SovdResourceEntityType (always plural).
+ * Shared utility used by FaultsDashboard and FaultsPanel.
+ */
+export function mapFaultEntityTypeToResourceType(entityType: string): SovdResourceEntityType {
+    const type = entityType.toLowerCase();
+    if (type === 'area' || type === 'areas') return 'areas';
+    if (type === 'app' || type === 'apps') return 'apps';
+    if (type === 'function' || type === 'functions') return 'functions';
+    if (type === 'component' || type === 'components') return 'components';
+
+    console.warn(
+        '[mapFaultEntityTypeToResourceType] Unexpected entity_type:',
+        entityType,
+        '- defaulting to "components".'
+    );
+    return 'components';
+}
+
+/**
  * Format bytes as human-readable string
  * @param bytes Number of bytes
  * @returns Formatted string (e.g., '1.5 MB')
@@ -2039,7 +2065,7 @@ export function formatBytes(bytes: number): string {
 
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
 
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }

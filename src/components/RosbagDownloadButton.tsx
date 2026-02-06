@@ -5,12 +5,34 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAppStore } from '@/lib/store';
 import { formatBytes, formatDuration } from '@/lib/sovd-api';
+import type { SovdResourceEntityType } from '@/lib/sovd-api';
 import type { RosbagSnapshot } from '@/lib/types';
 
 interface RosbagDownloadButtonProps {
     snapshot: RosbagSnapshot;
     variant?: 'default' | 'outline' | 'ghost';
     size?: 'default' | 'sm' | 'icon';
+}
+
+/**
+ * Parse a bulk_data_uri like "/apps/motor/bulk-data/rosbags/FAULT_CODE"
+ * into { entityType, entityId, category, id } for the downloadBulkData API.
+ */
+function parseBulkDataUri(uri: string): {
+    entityType: SovdResourceEntityType;
+    entityId: string;
+    category: string;
+    id: string;
+} | null {
+    // Pattern: /<entityType>/<entityId>/bulk-data/<category>/<id>
+    const match = uri.match(/^\/(apps|components|areas|functions)\/([^/]+)\/bulk-data\/([^/]+)\/(.+)$/);
+    if (!match) return null;
+    return {
+        entityType: match[1]! as SovdResourceEntityType,
+        entityId: match[2]!,
+        category: match[3]!,
+        id: match[4]!,
+    };
 }
 
 export function RosbagDownloadButton({ snapshot, variant = 'outline', size = 'sm' }: RosbagDownloadButtonProps) {
@@ -30,18 +52,27 @@ export function RosbagDownloadButton({ snapshot, variant = 'outline', size = 'sm
         setError(null);
 
         try {
-            // Get full URL and trigger download
-            const url = client.getBulkDataUrl(snapshot.bulk_data_uri);
+            const parsed = parseBulkDataUri(snapshot.bulk_data_uri);
+            if (!parsed) {
+                throw new Error('Invalid bulk_data_uri format');
+            }
 
-            // Create temporary link and click it
+            const { blob, filename } = await client.downloadBulkData(
+                parsed.entityType,
+                parsed.entityId,
+                parsed.category,
+                parsed.id
+            );
+
+            // Create object URL and trigger download
+            const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            // Use name field; extract filename from URI as fallback
-            const filename = snapshot.name || snapshot.bulk_data_uri.split('/').pop() || 'recording.mcap';
-            link.download = filename.endsWith('.mcap') ? filename : `${filename}.mcap`;
+            link.download = filename;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+            URL.revokeObjectURL(url);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Download failed');
         } finally {

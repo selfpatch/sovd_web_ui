@@ -19,6 +19,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { SnapshotCard } from './SnapshotCard';
 import { useAppStore, type AppState } from '@/lib/store';
 import type { Fault, FaultSeverity, FaultStatus, FaultResponse } from '@/lib/types';
+import { mapFaultEntityTypeToResourceType } from '@/lib/sovd-api';
 import type { SovdResourceEntityType } from '@/lib/sovd-api';
 
 interface FaultsPanelProps {
@@ -312,8 +313,9 @@ export function FaultsPanel({ entityId, entityType = 'components' }: FaultsPanel
                         // Components have a synthetic FQN that doesn't match fault reporting sources,
                         // so fetching via /components/{id}/faults/{code} produces an unusable bulk_data_uri.
                         const fault = faults.find((f) => f.code === faultCode);
-                        const detailEntityType: SovdResourceEntityType =
-                            fault?.entity_type === 'app' ? 'apps' : entityType;
+                        const detailEntityType: SovdResourceEntityType = fault?.entity_type
+                            ? mapFaultEntityTypeToResourceType(fault.entity_type)
+                            : entityType;
                         const detailEntityId = fault?.entity_id || entityId;
                         const details = await client.getFaultWithEnvironmentData(
                             detailEntityType,
