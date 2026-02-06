@@ -1420,7 +1420,7 @@ export const useAppStore = create<AppState>()(
                         );
                         if (existingIndex >= 0) {
                             // Skip update if fault data hasn't changed (avoids re-render flicker)
-                            const existing = faults[existingIndex];
+                            const existing = faults[existingIndex]!;
                             if (
                                 existing.status === fault.status &&
                                 existing.severity === fault.severity &&

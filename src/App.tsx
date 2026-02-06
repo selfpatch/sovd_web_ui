@@ -126,7 +126,7 @@ function App() {
                     )}
 
                     {/* Main content */}
-                    <div className="flex-1 md:ml-0 overflow-hidden">
+                    <div className="flex-1 md:ml-0 flex flex-col overflow-hidden">
                         <ErrorBoundary>
                             <EntityDetailPanel
                                 onConnectClick={() => setShowConnectionDialog(true)}
